@@ -19,6 +19,7 @@
     "noErrorTruncation": true,
     "declaration": true
   },
+  "types": [ "forge-viewer", "three" ],
   "include": [
     "./src/**/*.ts"
   ],
