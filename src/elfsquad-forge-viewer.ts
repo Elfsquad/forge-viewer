@@ -15,23 +15,19 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     constructor() {
         super();
-
         this._forgeContext = new ForgeContext();
-        this._forgeContext.initialize().then(() => {
-            this.initialized = true;
-            console.log('Autodesk initialized');
-        });
     }
 
 
-    connectedCallback() {
-        console.log('initialize forge viewer', this.configurationId);
-        
+    connectedCallback() {     
+        this._forgeContext.initialize().then(() => {
+            this.initialized = true;
+        });
     }
 
     update() {
         if (!this.initialized) {
-
+            throw Error("Viewer is not yet initialized");
         }
     }
 }
