@@ -1,2 +1,3 @@
+import { ElfsquadForgeViewer } from "./forge-viewer";
 
-console.log('init');
+customElements.define('elfsquad-forge-viewer', ElfsquadForgeViewer);
