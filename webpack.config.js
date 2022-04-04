@@ -1,24 +1,39 @@
-const path = require('path');
+const path = require("path");
 
 module.exports = {
-  entry: './src/index.ts',
-  devtool: 'inline-source-map',
+  entry: "./src/index.ts",
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        use: 'ts-loader',
+        use: [
+          {
+            loader: "ts-loader",
+          },
+        ],
         exclude: /node_modules/,
+      },
+      {
+        test: /\.css$/,
+        loader: 'css-loader'
+      },
+      {
+        test: /\.svg$/,
+        loader: 'svg-inline-loader'
       },
     ],
   },
   resolve: {
-    extensions: ['.tsx', '.ts', '.js'],
+    extensions: [".tsx", ".ts", ".js" ],
+  },
+  experiments: {
+    outputModule: true,
   },
   output: {
-    filename: 'forge-viewer.js',
-    path: path.resolve(__dirname, 'dist'),
+    filename: "index.js",
+    path: path.resolve(__dirname, "dist"),
+    library: {
+      type: "module",
+    },
   },
-  plugins: [
-  ]
 };
