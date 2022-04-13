@@ -5,7 +5,7 @@
 }
 
 .forge-viewer-actions{
-    position: fixed;
+    position: absolute;
     display: flex;
     top: 0px;
     right: 0px;    

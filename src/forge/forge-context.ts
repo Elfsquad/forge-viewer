@@ -19,14 +19,14 @@ export class ForgeContext {
 
     constructor(private _configuratorContext: ConfiguratorContext) { }
 
-    public async initialize(element: HTMLElement): Promise<void> {        
+    public async initialize(element: HTMLElement, onProgess: ((event: any) => void)|null = null): Promise<void> {        
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
 
         this._element = element;
         await this.initializeViewerToken();
-        await this.initializeViewer(this._element);
+        await this.initializeViewer(this._element, onProgess);
         this.intializeNameLabelsManager();
         this.initializeLabelManager();          
         this.initializeFootprintManager();
@@ -41,7 +41,7 @@ export class ForgeContext {
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement) : Promise<void> {
+    private initializeViewer(element: HTMLElement, onProgess: ((event: any) => void)|null) : Promise<void> {
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
@@ -49,6 +49,7 @@ export class ForgeContext {
                 accessToken: this._token as string
             }, () => {
                 this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
+                if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
                 this.viewer.initialize();
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);

@@ -34,17 +34,14 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this.initializeActions();
     }
 
-    public async initialize(configuratorContext: ConfiguratorContext): Promise<void> {
+    public async initialize(configuratorContext: ConfiguratorContext, onProgess: ((event: any) => void)|null = null): Promise<void> {
         if (!this._viewerContainerDiv) return;
 
         this._configuratorContext = configuratorContext;
         this._configuratorContext.addEventListener('onConfigurationUpdated', _ => this.update());
-
         this.initializeSettings();
-
         this._forgeContext = new ForgeContext(this._configuratorContext);
-
-        await this._forgeContext.initialize(this._viewerContainerDiv);
+        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess);
         this.initialized = true;
         await this.update();
     }
