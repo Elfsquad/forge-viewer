@@ -74,7 +74,6 @@ export class ForgeContext {
     private initializeLabelManager() {
 
         this.labelManager = new LabelManager(this.viewer);
-        console.log('labelManager', this.labelManager);
 
         const style = document.createElement('style');
         style.textContent = `
@@ -110,22 +109,23 @@ export class ForgeContext {
             
             for (let configurationId of Object.keys(this.loaded3dModels)) {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
-                    console.log('viewer.hideModel', configurationId);
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
                     delete this.loaded3dModels[configurationId];
                 }
             }
 
             for (let layout of layout3d) {
+              
                 this.linked3dSettings[layout.configurationId] = layout;
 
                 if (!(layout.configurationId in this.loaded3dModels)) {
                     const model = await this.loadModel(layout); 
                     this.toggleInViewer(model, layout);                   
-                } else {
+                } else {                   
                     let loadedModel = this.loaded3dModels[layout.configurationId];
-                    await this.toggleInViewer(loadedModel, layout);
-                }
+                    this.moveModel(loadedModel, layout);
+                    await this.toggleInViewer(loadedModel, layout);                    
+                }                
             }
             
             (<any>this.viewer).impl.invalidate(true);
@@ -192,7 +192,7 @@ export class ForgeContext {
         return promise;
     }
     
-    private _loadModelPromises: {resolve: any, reject: Function}[] = [];
+    private _loadModelPromises: { [configurationId: string]: {resolve: any, reject: Function} } = {};
     private _layouts: Layout3d[] = [];
 
     private loadModel(layout3d: Layout3d) : Promise<Autodesk.Viewing.Model> {
@@ -201,9 +201,9 @@ export class ForgeContext {
             Autodesk.Viewing.Document.load(
                  `urn:${layout3d.urn}`, 
                 async (viewerDocument) => {
-                    if (this.viewer == null) return;                    
+                    if (this.viewer == null) return;               
 
-                    this._loadModelPromises[viewerDocument.docRoot.id] = {resolve, reject};
+                    this._loadModelPromises[layout3d.configurationId] = {resolve, reject};
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
                     const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
@@ -239,12 +239,23 @@ export class ForgeContext {
     }
 
     private resolveLoadedModel(model: Autodesk.Viewing.Model) {
-        if (!this._loadModelPromises[model.id]) return;
+        let configurationId = this.configurationIdForModel(model);
+        if (!configurationId) return;
 
-        if (this._geometryLoaded[model.id] && this._objectTreeLoaded[model.id]) {
-            this._loadModelPromises[model.id].resolve(model);
-            delete this._loadModelPromises[model.id];   
-        }  
+        if (!this._loadModelPromises[configurationId]) return;
+
+        this._loadModelPromises[configurationId].resolve(model);
+        delete this._loadModelPromises[configurationId]; 
+    }
+
+    private configurationIdForModel(model: Autodesk.Viewing.Model):string|null {
+        let configurationIds = Object.keys(this.loaded3dModels);
+        for (let configurationId of configurationIds) {
+            if (this.loaded3dModels[configurationId].id == model.id) {
+                return configurationId;
+            }
+        }
+        return null;        
     }
     
     private moveModel(model: Autodesk.Viewing.Model, layout3d: Layout3d) {
