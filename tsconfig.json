@@ -17,7 +17,8 @@
     "outDir": "./dist",
     "experimentalDecorators": true,
     "noErrorTruncation": true,
-    "declaration": true
+    "declaration": true,
+    "strictPropertyInitialization": false
   },
   "types": [ "forge-viewer", "three" ],
   "include": [
