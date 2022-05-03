@@ -37,7 +37,7 @@ export class ForgeContext {
     }
 
     private async initializeViewerToken(): Promise<void> {
-        const response = await this._configuratorContext['get'](`${this._configuratorContext['options'].apiUrl}/api/2.0/configurations/autodesktoken`);
+        const response = await this._configuratorContext._get(`${this._configuratorContext._options.apiUrl}/api/2.0/configurations/autodesktoken`);
         this._token = await response.text();
     }
 
@@ -111,6 +111,7 @@ export class ForgeContext {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
                     delete this.loaded3dModels[configurationId];
+                    delete this.linked3dSettings[configurationId];
                 }
             }
 
@@ -131,15 +132,6 @@ export class ForgeContext {
             (<any>this.viewer).impl.invalidate(true);
             (<any>this.viewer).impl.sceneUpdated(true);
             
-            // if (this.nameLabelsEnabled) {
-            //     this.hideNameLabels();
-            //     this.showNameLabels();
-            //     setTimeout(() => {
-            //         this.hideNameLabels();
-            //         this.showNameLabels();
-            //     }, 1000)
-            // }
-
             resolve();            
         });
 

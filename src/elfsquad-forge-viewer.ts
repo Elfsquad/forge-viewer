@@ -1,6 +1,7 @@
-import { CameraPosition, ConfiguratorContext } from "@elfsquad/configurator";
+import { CameraPosition, ConfiguratorContext, Layout3d } from "@elfsquad/configurator";
 import { ForgeContext } from "./forge/forge-context";
 import styles from './elfsquad-forge-viewer.css';
+import { ElfsquadConfigurationOverview } from "./overview-element";
 
 
 export class ElfsquadForgeViewer extends HTMLElement {
@@ -11,6 +12,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     private _viewerContainerDiv: HTMLDivElement | null = null;
     private _actionsDiv: HTMLDivElement | null = null;
+
+    private _overviewContainerDiv: HTMLDivElement | null = null;
+    private _configurationOverview: ElfsquadConfigurationOverview | null = null;
 
     constructor() {
         super();
@@ -31,6 +35,10 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._actionsDiv.className = "forge-viewer-actions";
         this._viewerContainerDiv!.appendChild(this._actionsDiv);
 
+        this._overviewContainerDiv = document.createElement('div');
+        this._overviewContainerDiv.className = 'configurations-overview';
+        this.shadowRoot!.appendChild(this._overviewContainerDiv);
+
         this.initializeActions();
     }
 
@@ -42,6 +50,17 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this.initializeSettings();
         this._forgeContext = new ForgeContext(this._configuratorContext);
         await this._forgeContext.initialize(this._viewerContainerDiv, onProgess);
+
+        this._configurationOverview = new ElfsquadConfigurationOverview(this._forgeContext, this._overviewContainerDiv);
+        this._configurationOverview.onConfigurationSelected = (layout3d: Layout3d) => { 
+            this.emitConfigurationSelected(layout3d.configurationId);
+        };
+
+        this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
+            this._configurationOverview?.selectConfiguration(configurationId);
+            this.emitConfigurationSelected(configurationId);
+        };
+
         this.initialized = true;
         await this.update();
     }
@@ -54,6 +73,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
         const layout3d = await this._configuratorContext?.getLayout3d();
         await this._forgeContext?.applyLayout(layout3d as any);
+        await this._configurationOverview?.update();
     }
 
     public applyCamera(camera: CameraPosition) {
@@ -124,5 +144,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
         focusButton.innerHTML = require("./icons/focus-centred.svg") as string;
         focusButton.onclick = () => this._forgeContext?.focus();
         this._actionsDiv!.appendChild(focusButton);
+    }
+
+    private emitConfigurationSelected(configurationId: string) {
+        this.dispatchEvent(new CustomEvent('onConfigurationSelected', { detail: configurationId }));
     }
 }

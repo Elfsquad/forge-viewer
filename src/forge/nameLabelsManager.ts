@@ -5,6 +5,7 @@ export class NameLabelsManager {
     public nameLabelsEnabled: boolean = false;
     private labels: ConfigurationLabel[] = [];
 
+    public onConfigurationSelected: ((configurationId: string) => void) | null = null;
 
     constructor(private forgeContext: ForgeContext) {
         this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
@@ -39,15 +40,9 @@ export class NameLabelsManager {
             label.style.cursor = "pointer";
             label.onclick = () => {
                 this.forgeContext.viewer.clearSelection();
-                let model = this.forgeContext.loaded3dModels[label.id];
-                let instanceTree = model.getData().instanceTree;
-                var selections = [
-                    {
-                        model: model,
-                        ids: [instanceTree.getRootId()]
-                    }
-                ];
-                this.forgeContext.viewer.impl.selector.setAggregateSelection(selections);
+                if (this.onConfigurationSelected){
+                    this.onConfigurationSelected(id);
+                }
             }
             let duplicates = this.labels.filter(l => l.name == name);
             for (let i = 0; i < duplicates.length; i++) {
