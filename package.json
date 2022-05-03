@@ -16,7 +16,7 @@
     "type": "git",
     "url": "git+https://github.com/Elfsquad/forge-viewer.git"
   },
-  "author": "",
+  "author": "Elfsquad",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
