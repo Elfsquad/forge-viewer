@@ -25,7 +25,7 @@
     "url": "https://github.com/Elfsquad/forge-viewer/issues"
   },
   "homepage": "https://github.com/Elfsquad/forge-viewer#readme",
-  "peerDependencies": {
+  "dependencies": {
     "@elfsquad/configurator": "2.0.1"
   },
   "devDependencies": {
