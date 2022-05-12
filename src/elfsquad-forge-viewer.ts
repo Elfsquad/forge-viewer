@@ -1,4 +1,4 @@
-import { CameraPosition, ConfiguratorContext, Layout3d } from "@elfsquad/configurator";
+import { CameraPosition, ConfiguratorContext } from "@elfsquad/configurator";
 import { ForgeContext } from "./forge/forge-context";
 import styles from './elfsquad-forge-viewer.css';
 import { ElfsquadConfigurationOverview } from "./overview-element";
@@ -10,7 +10,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
     private _configuratorContext: ConfiguratorContext | null = null;
     private initialized: boolean = false;
 
-    private _viewerContainerDiv: HTMLDivElement | null = null;
+    private _viewerContainerDiv: HTMLDivElement;
     private _actionsDiv: HTMLDivElement | null = null;
 
     private _overviewContainerDiv: HTMLDivElement | null = null;
@@ -18,6 +18,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     constructor() {
         super();
+        this._viewerContainerDiv = document.createElement('div');
     }
 
     connectedCallback() {
@@ -27,7 +28,6 @@ export class ElfsquadForgeViewer extends HTMLElement {
         styleElement.innerHTML = styles;
         this.shadowRoot!.appendChild(styleElement);
 
-        this._viewerContainerDiv = document.createElement('div');
         this._viewerContainerDiv.className = "forge-viewer-container";
         this.shadowRoot!.appendChild(this._viewerContainerDiv);
 
@@ -37,7 +37,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
         this._overviewContainerDiv = document.createElement('div');
         this._overviewContainerDiv.className = 'configurations-overview';
-        this.shadowRoot!.appendChild(this._overviewContainerDiv);
+        this._viewerContainerDiv!.appendChild(this._overviewContainerDiv);
 
         this.initializeActions();
     }
@@ -51,9 +51,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._forgeContext = new ForgeContext(this._configuratorContext);
         await this._forgeContext.initialize(this._viewerContainerDiv, onProgess);
 
-        this._configurationOverview = new ElfsquadConfigurationOverview(this._forgeContext, this._overviewContainerDiv);
-        this._configurationOverview.onConfigurationSelected = (layout3d: Layout3d) => { 
-            this.emitConfigurationSelected(layout3d.configurationId);
+        this._configurationOverview = new ElfsquadConfigurationOverview(this._configuratorContext, this._overviewContainerDiv);
+        this._configurationOverview.onConfigurationSelected = (configurationId: string) => { 
+            this.emitConfigurationSelected(configurationId);
         };
 
         this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
@@ -76,8 +76,17 @@ export class ElfsquadForgeViewer extends HTMLElement {
         await this._configurationOverview?.update();
     }
 
-    public applyCamera(camera: CameraPosition) {
-        this._forgeContext?.applyCamera(camera, (<any>this._configuratorContext).configuration.id);
+    public applyCamera(camera: CameraPosition, configurationId: string) {
+        this._forgeContext?.applyCamera(camera, configurationId);
+    }
+
+    public hideUi() {
+        console.log('hideUi', this._viewerContainerDiv);
+        this._viewerContainerDiv.classList.add('hide-ui');
+    }
+
+    public showUi() {
+        this._viewerContainerDiv.classList.remove('hide-ui');
     }
 
     private async initializeSettings(): Promise<void> {
@@ -133,6 +142,12 @@ export class ElfsquadForgeViewer extends HTMLElement {
         else {
             this.labelsToggleButton!.innerHTML = require("./icons/tag.svg") as string;
         }
+    }
+
+    public screenshot():string {
+        console.log('screenshot', this);
+        const canvas = this._viewerContainerDiv.getElementsByTagName('canvas')[0];
+        return canvas.toDataURL('image/png');
     }
 
     private initializeActions() {

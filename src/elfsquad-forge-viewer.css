@@ -25,10 +25,13 @@
     }
 
 
-
+    .hide-ui .configurations-overview,
+    .hide-ui .forge-viewer-actions {
+        display: none;
+    }
 
     .configurations-overview{
-        position: fixed;
+        position: absolute;
         right: 0px;
         max-height: 70vh;
         overflow-x:hidden;

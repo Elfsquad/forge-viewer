@@ -54,8 +54,10 @@ export class ForgeContext {
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);
+                this.viewer.disableHighlight(true);
                 this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
                 this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
+                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());                
                 resolve();
             });
         });
@@ -179,7 +181,7 @@ export class ForgeContext {
             );
     
             this.viewer.restoreState(targetState);
-        }); 
+        });
         
         return promise;
     }
@@ -200,7 +202,8 @@ export class ForgeContext {
 
                     const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
                     this.viewer.loadModel(viewerDocument.getViewablePath(defaultModel), {
-                        applyScaling: 'mm'
+                        applyScaling: 'mm',
+                        loadAsHidden: true
                     },
                     (model) => {
                         this.loaded3dModels[layout3d.configurationId] = model;    
@@ -235,6 +238,9 @@ export class ForgeContext {
         if (!configurationId) return;
 
         if (!this._loadModelPromises[configurationId]) return;
+
+        if (!(this._objectTreeLoaded[model.id]  && this._geometryLoaded[model.id])) return;
+        this.viewer.showModel(model, false);
 
         this._loadModelPromises[configurationId].resolve(model);
         delete this._loadModelPromises[configurationId]; 
@@ -289,7 +295,6 @@ export class ForgeContext {
     private originalMaterials: { [fragId: string]: any } = {};
     private originalColors: { [fragId: string]: any } = {};
     private toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
-
         if (!this.viewer) { return; }
 
         let mapped3dItems = linked3dModel.mapped3dItems;

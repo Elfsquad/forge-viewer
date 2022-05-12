@@ -1,13 +1,11 @@
-import { Layout3d } from "@elfsquad/configurator";
-import { ForgeContext } from "./forge/forge-context";
-
+import { ConfiguratorContext, LinkedConfigurationOverview } from "@elfsquad/configurator";
 
 export class ElfsquadConfigurationOverview {
 
     private selectedConfigurationId: string | null = null;
-    public onConfigurationSelected: ((layout: Layout3d) => void)  | null = null;
+    public onConfigurationSelected: ((configurationId: string) => void)  | null = null;
 
-    constructor(private forgeContext: ForgeContext, private container: HTMLDivElement | null) {
+    constructor(private configuratorContext: ConfiguratorContext, private container: HTMLDivElement | null) {
     }
 
 
@@ -19,9 +17,9 @@ export class ElfsquadConfigurationOverview {
     public async update(): Promise<void> {
         if (this.container == null) return;
 
+        const configurations = (await this.getLinkedConfigurationsOverview()).configurations;
+
         this.container.innerHTML = "";
-        
-        const configurations = Object.values(this.forgeContext.linked3dSettings);
         if (configurations.length <= 1) return;
 
         if (!this.selectedConfigurationId ||
@@ -37,7 +35,7 @@ export class ElfsquadConfigurationOverview {
                 image.src = configuration.imageUrl;
                 element.appendChild(image);
             }
-            element.appendChild(document.createTextNode(configuration.name));
+            element.appendChild(document.createTextNode(configuration.title));
             
             if (configuration.configurationId == this.selectedConfigurationId) {
                 element.classList.add("selected");
@@ -48,11 +46,15 @@ export class ElfsquadConfigurationOverview {
                 this.update();                
                 
                 if (this.onConfigurationSelected) {
-                    this.onConfigurationSelected(configuration);
+                    this.onConfigurationSelected(configuration.configurationId);
                 }
             };
 
             this.container.appendChild(element);
         }
+    }
+
+    private getLinkedConfigurationsOverview(): Promise<LinkedConfigurationOverview> {
+        return this.configuratorContext.getLinkedConfigurationOverview()
     }
 }
