@@ -8,12 +8,19 @@ export class NameLabelsManager {
     public onConfigurationSelected: ((configurationId: string) => void) | null = null;
 
     constructor(private forgeContext: ForgeContext) {
-        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
-            if (this.isNameLabelsEnabled()) {
-                const bbox = this.forgeContext.getModelBoundingBox();
-                this.updateLabelPositions(bbox[0], bbox[1]);
-            }
+        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
+            this.update();
         });
+        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+           this.update();
+        });
+    }
+
+    private update() {
+        if (this.isNameLabelsEnabled()) {
+            const bbox = this.forgeContext.getModelBoundingBox();
+            this.updateLabelPositions(bbox[0], bbox[1]);
+        }
     }
 
     public toggleNameLabels() {  

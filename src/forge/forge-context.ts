@@ -1,6 +1,7 @@
-import { CameraPosition, ConfiguratorContext, Layout3d, Material } from "@elfsquad/configurator";
+import { CameraPosition, Layout3d, Material } from "@elfsquad/configurator";
 import { FootprintManager } from "./footprintManager";
 import { Label3DManager as LabelManager } from "./labelmanager";
+import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
 
@@ -17,9 +18,9 @@ export class ForgeContext {
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
 
-    constructor(private _configuratorContext: ConfiguratorContext) { }
+    constructor() { }
 
-    public async initialize(element: HTMLElement, onProgess: ((event: any) => void)|null = null): Promise<void> {        
+    public async initialize(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void)|null = null): Promise<void> {        
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
@@ -37,11 +38,11 @@ export class ForgeContext {
     }
 
     private async initializeViewerToken(): Promise<void> {
-        const response = await this._configuratorContext._get(`${this._configuratorContext._options.apiUrl}/api/2.0/configurations/autodesktoken`);
+        const response = await fetch(`https://api.elfsquad.io/api/2.0/configurations/autodesktoken`);
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement, onProgess: ((event: any) => void)|null) : Promise<void> {
+    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void)|null) : Promise<void> {
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
@@ -510,7 +511,7 @@ export class ForgeContext {
 
         for (const key of ['map', 'specularMap', 'bumpMap']) {
             if (material[key]) {
-                (<any>Material).loadTexture(material[key], material, threeMaterial,
+                this.loadTexture(material[key], material, threeMaterial,
                     (texture:any) => {
                         threeMaterial[key] = texture;
                         // Normalize all the material textures to the object size.
@@ -528,6 +529,26 @@ export class ForgeContext {
         }
 
         return threeMaterial;
+    }
+
+
+    private loadTexture(path: string, material: Material, threeMaterial: any, callbackfn: any): any {
+        const loader = new THREE.TextureLoader();
+        loader.crossOrigin = '';
+        loader.load(path,
+            (texture) => {
+                this.applyTextureData(material, texture);
+                threeMaterial.needsUpdate = texture.needsUpdate = true;
+                callbackfn(texture);
+            }
+        );
+    }
+
+    private applyTextureData(material: Material, texture: any) {
+        texture.wrapS = parseInt(material.textureWrapX.toString());
+        texture.wrapT = parseInt(material.textureWrapY.toString());
+        texture.repeat.set(material.textureRepeatX, material.textureRepeatY);
+        texture.flipY = material.textureFlipY;
     }
 
     private dbsToFrags(dbIds: number[]) {

@@ -1,13 +1,13 @@
-import { CameraPosition, ConfiguratorContext } from "@elfsquad/configurator";
+import { CameraPosition, Layout3d } from "@elfsquad/configurator";
 import { ForgeContext } from "./forge/forge-context";
 import styles from './elfsquad-forge-viewer.css';
 import { ElfsquadConfigurationOverview } from "./overview-element";
+import { ViewerProgressEvent } from "./forge/models/progressEvent";
 
 
 export class ElfsquadForgeViewer extends HTMLElement {
 
     private _forgeContext: ForgeContext | null = null;
-    private _configuratorContext: ConfiguratorContext | null = null;
     private initialized: boolean = false;
 
     private _viewerContainerDiv: HTMLDivElement;
@@ -16,13 +16,23 @@ export class ElfsquadForgeViewer extends HTMLElement {
     private _overviewContainerDiv: HTMLDivElement | null = null;
     private _configurationOverview: ElfsquadConfigurationOverview | null = null;
 
+    private _footprintEnabled = false;
+    private _labelsEnabled = false;
+
     constructor() {
         super();
         this._viewerContainerDiv = document.createElement('div');
+
+      
     }
 
     connectedCallback() {
         this.attachShadow({ mode: 'open' });
+
+        new MutationObserver((mutations) => {
+            if (!mutations.some(m => m.type == 'attributes')) return;
+            this.initializeSettings();
+        }).observe(this, { attributes: true});
 
         const styleElement = document.createElement('style');
         styleElement.innerHTML = styles;
@@ -39,40 +49,33 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._overviewContainerDiv.className = 'configurations-overview';
         this._viewerContainerDiv!.appendChild(this._overviewContainerDiv);
 
+        this.initializeSettings();
         this.initializeActions();
     }
 
-    public async initialize(configuratorContext: ConfiguratorContext, onProgess: ((event: any) => void)|null = null): Promise<void> {
+    public async initialize(layout3d: Layout3d[], onProgess: ((event: ViewerProgressEvent) => void)|null = null): Promise<void> {
         if (!this._viewerContainerDiv) return;
 
-        this._configuratorContext = configuratorContext;
-        this._configuratorContext.addEventListener('onConfigurationUpdated', _ => this.update());
-        this.initializeSettings();
-        this._forgeContext = new ForgeContext(this._configuratorContext);
+        this._forgeContext = new ForgeContext();
         await this._forgeContext.initialize(this._viewerContainerDiv, onProgess);
 
-        this._configurationOverview = new ElfsquadConfigurationOverview(this._configuratorContext, this._overviewContainerDiv);
-        this._configurationOverview.onConfigurationSelected = (configurationId: string) => { 
-            this.emitConfigurationSelected(configurationId);
-        };
-
+        
         this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
             this._configurationOverview?.selectConfiguration(configurationId);
             this.emitConfigurationSelected(configurationId);
         };
 
         this.initialized = true;
-        await this.update();
+        await this.update(layout3d);
     }
 
-    public async update(): Promise<void> {
+    public async update(layout3d: Layout3d[]): Promise<void> {
         if (!this.initialized) {
             console.error("Viewer is not yet initialized");
             return;
         }
 
-        const layout3d = await this._configuratorContext?.getLayout3d();
-        await this._forgeContext?.applyLayout(layout3d as any);
+        await this._forgeContext?.applyLayout(layout3d);
         await this._configurationOverview?.update();
     }
 
@@ -81,8 +84,8 @@ export class ElfsquadForgeViewer extends HTMLElement {
     }
 
     public hideUi() {
-        console.log('hideUi', this._viewerContainerDiv);
         this._viewerContainerDiv.classList.add('hide-ui');
+        this._forgeContext?.nameLabelsManager!.hideNameLabels();
     }
 
     public showUi() {
@@ -90,16 +93,14 @@ export class ElfsquadForgeViewer extends HTMLElement {
     }
 
     private async initializeSettings(): Promise<void> {
-        const settings = await this._configuratorContext?.getSettings();
-        if (settings?.enable3dFootprint) {
+        if (this.getAttribute('footprint') === 'true' && !this._footprintEnabled){
             this.enableFootprint();
         }
-        if (settings?.enable3dLabel) {
+        if (this.getAttribute('labels') === 'true' && !this._labelsEnabled) {
             this.enableLabels();
         }
     }
 
-    private _footprintEnabled: boolean = false;
     public enableFootprint() {
         this._footprintEnabled = true;
         const footprintToggleButton = document.createElement('button');
@@ -108,7 +109,6 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._actionsDiv!.appendChild(footprintToggleButton);
     }
 
-    private _labelsEnabled: boolean = false;
     private labelsToggleButton: HTMLButtonElement | null = null;
     public enableLabels() {
         this._labelsEnabled = true;
@@ -142,6 +142,10 @@ export class ElfsquadForgeViewer extends HTMLElement {
         else {
             this.labelsToggleButton!.innerHTML = require("./icons/tag.svg") as string;
         }
+    }
+
+    public disableLabels(){
+        this._forgeContext?.nameLabelsManager!.hideNameLabels();
     }
 
     public screenshot():string {
