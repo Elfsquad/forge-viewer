@@ -1,6 +1,6 @@
 {
   "name": "@elfsquad/forge-viewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,7 +26,7 @@
   },
   "homepage": "https://github.com/Elfsquad/forge-viewer#readme",
   "dependencies": {
-    "@elfsquad/configurator": "file:../configurator"
+    "@elfsquad/configurator": "2.0.2"
   },
   "devDependencies": {
     "@types/forge-viewer": "7.61.0",
