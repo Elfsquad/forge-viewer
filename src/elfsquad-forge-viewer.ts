@@ -52,7 +52,12 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this.initializeSettings();
         this.initializeActions();
     }
-
+    
+    /**
+     * Initialize the viewer component.
+     * @param layout3d - Layout that should be applied on initialization.
+     * @param onProgess - Callback function to listen to loading progress events.
+     */
     public async initialize(layout3d: Layout3d[], onProgess: ((event: ViewerProgressEvent) => void)|null = null): Promise<void> {
         if (!this._viewerContainerDiv) return;
 
@@ -69,6 +74,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
         await this.update(layout3d);
     }
 
+    /*
+     * Apply layout settings to the viewer.
+     */
     public async update(layout3d: Layout3d[]): Promise<void> {
         if (!this.initialized) {
             console.error("Viewer is not yet initialized");
@@ -149,7 +157,6 @@ export class ElfsquadForgeViewer extends HTMLElement {
     }
 
     public screenshot():string {
-        console.log('screenshot', this);
         const canvas = this._viewerContainerDiv.getElementsByTagName('canvas')[0];
         return canvas.toDataURL('image/png');
     }
