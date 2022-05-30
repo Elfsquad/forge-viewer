@@ -1,6 +1,10 @@
 # Elfsquad Forge Viewer
 The Elfsquad Forge Viewer allows you to embed a [Autodesk Forge viewer](https://forge.autodesk.com/) into your own custom build configurator implementation.
 
+## Documentation
+
+For more detailed documentation see https://elfsquad.github.io/forge-viewer/classes/ElfsquadForgeViewer.html
+
 ## Example
 ```javascript
 import { Configuration, ConfiguratorContext } from "@elfsquad/configurator";
