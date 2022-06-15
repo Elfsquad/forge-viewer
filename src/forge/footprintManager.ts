@@ -6,6 +6,7 @@ import { ThreeHelpers } from "./threeHelpers";
 export class FootprintManager {
     private footprintUnit: string = 'mm';
     private unitPicker: HTMLElement;
+    public isShowing: boolean = false;
 
     constructor(private forgeContext: ForgeContext, private parentElement: HTMLElement | null) {
 
@@ -59,6 +60,7 @@ export class FootprintManager {
         this.updateLabelUnits(min, max);
 
         this.unitPicker.style.display = 'block';
+        this.isShowing = true;
     }
 
     public hide() {
@@ -70,6 +72,7 @@ export class FootprintManager {
         this.forgeContext.labelManager.removeLabel('footprint-depth');
 
         this.unitPicker.style.display = 'none';
+        this.isShowing = false;
     }
 
     private drawBoundingBox(min: THREE.Vector3, max: THREE.Vector3, renderOverlayName: string) {
