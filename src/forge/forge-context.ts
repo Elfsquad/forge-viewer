@@ -58,7 +58,7 @@ export class ForgeContext {
                 this.viewer.disableHighlight(true);
                 this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
                 this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
-                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());                
+                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());              
                 resolve();
             });
         });
@@ -133,8 +133,8 @@ export class ForgeContext {
             }
             
             (<any>this.viewer).impl.invalidate(true);
-            (<any>this.viewer).impl.sceneUpdated(true);
-            
+            (<any>this.viewer).impl.sceneUpdated(true);                 
+            this.setPivotPoint();
             resolve();            
         });
 
