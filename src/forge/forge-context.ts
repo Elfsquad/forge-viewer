@@ -67,7 +67,7 @@ export class ForgeContext {
     }
 
     private initializeFootprintManager() {
-        this.footprintManager = new FootprintManager(this);
+        this.footprintManager = new FootprintManager(this, this._element);
     }
 
     private intializeNameLabelsManager() {
