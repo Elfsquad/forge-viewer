@@ -20,7 +20,7 @@ export class ForgeContext {
 
     constructor() { }
 
-    public async initialize(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void)|null = null): Promise<void> {        
+    public async initialize(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null = null): Promise<void> {
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
@@ -29,11 +29,11 @@ export class ForgeContext {
         await this.initializeViewerToken();
         await this.initializeViewer(this._element, onProgess);
         this.intializeNameLabelsManager();
-        this.initializeLabelManager();          
+        this.initializeLabelManager();
         this.initializeFootprintManager();
     }
 
-    public focus():void {
+    public focus(): void {
         this.viewer.fitToView();
     }
 
@@ -42,7 +42,7 @@ export class ForgeContext {
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void)|null) : Promise<void> {
+    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null): Promise<void> {
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
@@ -58,7 +58,7 @@ export class ForgeContext {
                 this.viewer.disableHighlight(true);
                 this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
                 this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
-                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());              
+                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());
                 resolve();
             });
         });
@@ -104,12 +104,12 @@ export class ForgeContext {
     }
 
     public applyLayout(layout3d: Layout3d[]): Promise<void> {
-        let promise = new Promise<void>(async (resolve, reject) => {            
+        let promise = new Promise<void>(async (resolve, reject) => {
             if (this.viewer == null) {
                 reject(Error("Viewer is not yet initialized"));
                 return;
             }
-            
+
             for (let configurationId of Object.keys(this.loaded3dModels)) {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
@@ -119,19 +119,19 @@ export class ForgeContext {
             }
 
             for (let layout of layout3d) {
-              
+
                 this.linked3dSettings[layout.configurationId] = layout;
 
                 if (!(layout.configurationId in this.loaded3dModels)) {
-                    const model = await this.loadModel(layout); 
-                    this.toggleInViewer(model, layout);                   
-                } else {                   
+                    const model = await this.loadModel(layout);
+                    this.toggleInViewer(model, layout);
+                } else {
                     let loadedModel = this.loaded3dModels[layout.configurationId];
                     this.moveModel(loadedModel, layout);
-                    await this.toggleInViewer(loadedModel, layout);                    
-                }                
+                    await this.toggleInViewer(loadedModel, layout);
+                }
             }
-            
+
             (<any>this.viewer).impl.invalidate(true);
             (<any>this.viewer).impl.sceneUpdated(true);                 
             this.setPivotPoint();
@@ -141,22 +141,23 @@ export class ForgeContext {
         return promise;
     }
 
-    public async applyCamera(camera: CameraPosition, configurationId: string): Promise<void> {
+    public async applyCamera(camera: CameraPosition, configurationId: string | null = null): Promise<void> {
         if (!camera.state) { return; }
 
         let viewerState = JSON.parse(camera.state) as ViewerState;
-        let settings = this.linked3dSettings[configurationId];
 
-        if (settings) {
-            viewerState.viewport.target[0] += settings.x;
-            viewerState.viewport.target[1] += settings.y;
-            viewerState.viewport.target[2] += settings.z;
+        if (configurationId) {
+            let settings = this.linked3dSettings[configurationId];
+            if (settings) {
+                viewerState.viewport.target[0] += settings.x;
+                viewerState.viewport.target[1] += settings.y;
+                viewerState.viewport.target[2] += settings.z;
 
-            viewerState.viewport.eye[0] += settings.x;
-            viewerState.viewport.eye[1] += settings.y;
-            viewerState.viewport.eye[2] += settings.z;
+                viewerState.viewport.eye[0] += settings.x;
+                viewerState.viewport.eye[1] += settings.y;
+                viewerState.viewport.eye[2] += settings.z;
+            }
         }
-
         viewerState.renderOptions.appearance.progressiveDisplay = false;
         await this.restoreState(viewerState);
         this.setPivotPoint();
@@ -165,40 +166,40 @@ export class ForgeContext {
     private restoreState(targetState: ViewerState): Promise<void> {
         // https://forge.autodesk.com/blog/wait-restorestate-finish
         var promise = new Promise<void>((resolve, _) => {
-            var listener = (event:any) => {
+            var listener = (event: any) => {
                 if (event.value.finalFrame) {
                     this.viewer.removeEventListener(
-                        Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT, 
+                        Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
                         listener
                     );
                     resolve();
                 }
             }
-    
+
             // Wait for last render caused by camera changes
             this.viewer.addEventListener(
                 Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
                 listener
             );
-    
+
             this.viewer.restoreState(targetState);
         });
-        
+
         return promise;
     }
-    
-    private _loadModelPromises: { [configurationId: string]: {resolve: any, reject: Function} } = {};
+
+    private _loadModelPromises: { [configurationId: string]: { resolve: any, reject: Function } } = {};
     private _layouts: Layout3d[] = [];
 
-    private loadModel(layout3d: Layout3d) : Promise<Autodesk.Viewing.Model> {
+    private loadModel(layout3d: Layout3d): Promise<Autodesk.Viewing.Model> {
         let promise = new Promise<Autodesk.Viewing.Model>((resolve, reject) => {
 
             Autodesk.Viewing.Document.load(
-                 `urn:${layout3d.urn}`, 
+                `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
-                    if (this.viewer == null) return;               
+                    if (this.viewer == null) return;
 
-                    this._loadModelPromises[layout3d.configurationId] = {resolve, reject};
+                    this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
                     const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
@@ -206,29 +207,29 @@ export class ForgeContext {
                         applyScaling: 'mm',
                         loadAsHidden: true
                     },
-                    (model) => {
-                        this.loaded3dModels[layout3d.configurationId] = model;    
-                        this.moveModel(model, layout3d);          
-                    });
-                              
-                }, 
+                        (model) => {
+                            this.loaded3dModels[layout3d.configurationId] = model;
+                            this.moveModel(model, layout3d);
+                        });
+
+                },
                 (err) => {
                     console.error('document load error', err)
                     reject(err);
                 });
         });
 
-        return promise;        
+        return promise;
     }
 
     private _geometryLoaded: boolean[] = [];
     private onGeometryLoaded(e: any) {
-        this._geometryLoaded[e.model.id] = true;        
+        this._geometryLoaded[e.model.id] = true;
         this.resolveLoadedModel(e.model);
     }
 
     private _objectTreeLoaded: boolean[] = [];
-    private onObjectTreeCreated(e:any) {
+    private onObjectTreeCreated(e: any) {
         this._objectTreeLoaded[e.model.id] = true;
         this.mapDbIds(e.model);
         this.resolveLoadedModel(e.model);
@@ -240,23 +241,23 @@ export class ForgeContext {
 
         if (!this._loadModelPromises[configurationId]) return;
 
-        if (!(this._objectTreeLoaded[model.id]  && this._geometryLoaded[model.id])) return;
+        if (!(this._objectTreeLoaded[model.id] && this._geometryLoaded[model.id])) return;
         this.viewer.showModel(model, false);
 
         this._loadModelPromises[configurationId].resolve(model);
-        delete this._loadModelPromises[configurationId]; 
+        delete this._loadModelPromises[configurationId];
     }
 
-    private configurationIdForModel(model: Autodesk.Viewing.Model):string|null {
+    private configurationIdForModel(model: Autodesk.Viewing.Model): string | null {
         let configurationIds = Object.keys(this.loaded3dModels);
         for (let configurationId of configurationIds) {
             if (this.loaded3dModels[configurationId].id == model.id) {
                 return configurationId;
             }
         }
-        return null;        
+        return null;
     }
-    
+
     private moveModel(model: Autodesk.Viewing.Model, layout3d: Layout3d) {
         let fragCount = model.getFragmentList().fragments.fragId2dbId.length;
         for (let fragId = 0; fragId < fragCount; fragId++) {
@@ -282,7 +283,7 @@ export class ForgeContext {
 
         if (!instanceTree)
             return;
-            
+
         let allDbIds = Object.keys(instanceTree.nodeAccess.dbIdToIndex).map(id => parseInt(id));
         for (let dbId of allDbIds) {
             let nodeName = instanceTree.getNodeName(dbId);
@@ -291,7 +292,7 @@ export class ForgeContext {
             if (!this.dbIdsByName[model.id][nodeName]) { this.dbIdsByName[model.id][nodeName] = []; }
             this.dbIdsByName[model.id][nodeName].push(dbId);
         }
-    }    
+    }
 
     private originalMaterials: { [fragId: string]: any } = {};
     private originalColors: { [fragId: string]: any } = {};
@@ -388,20 +389,20 @@ export class ForgeContext {
                 const itemIds = this.dbIdsByName[model.id][item.toLowerCase()];
                 if (itemIds && itemIds.length > 0) {
                     for (const parentId of itemIds) {
-                        this.recursiveEnumerateVisibleItems(instanceTree, parentId, (itemId:any) => {
+                        this.recursiveEnumerateVisibleItems(instanceTree, parentId, (itemId: any) => {
                             this.applyMaterial(itemId, mapped3dItems.itemMaterials[item], fragmentList);
                         });
                     }
                 }
             }
         }
-        
+
         this.viewer.impl.invalidate(true);
         this.viewer.impl.sceneUpdated(true);
         this.setPivotPoint();
     }
 
-    private applyMaterial(itemId: number, material: Material, fragmentList:any) {
+    private applyMaterial(itemId: number, material: Material, fragmentList: any) {
         if (!this.viewer) return;
 
         const frags = this.dbsToFrags([itemId]);
@@ -427,7 +428,7 @@ export class ForgeContext {
         while (stack.length > 0) {
             let id = stack.pop();
             callback(id);
-            instanceTree.enumNodeChildren(id, function (childId:any) {
+            instanceTree.enumNodeChildren(id, function(childId: any) {
                 if (!instanceTree.isNodeOff(childId)) {
                     stack.push(childId);
                 }
@@ -435,7 +436,7 @@ export class ForgeContext {
         }
     }
 
-    private applyMaterialToFragId(material:any, fragId: any, fragmentList: any) {
+    private applyMaterialToFragId(material: any, fragId: any, fragmentList: any) {
         var cloneM_name = this.uuidv4();
         material = this.addToMatMan(cloneM_name, material, true);
         fragmentList.setMaterial(fragId, material);
@@ -478,7 +479,7 @@ export class ForgeContext {
         return newMaterial;
     }
 
-    private applyMaterialChanges(threeMaterial: any, material: any, fragId:number) {
+    private applyMaterialChanges(threeMaterial: any, material: any, fragId: number) {
         if (!this.viewer) return;
 
         // Get the size of the object.
@@ -512,7 +513,7 @@ export class ForgeContext {
         for (const key of ['map', 'specularMap', 'bumpMap']) {
             if (material[key]) {
                 this.loadTexture(material[key], material, threeMaterial,
-                    (texture:any) => {
+                    (texture: any) => {
                         threeMaterial[key] = texture;
                         // Normalize all the material textures to the object size.
                         const normalizedRepeatX = material.textureRepeatX / size,
@@ -521,7 +522,7 @@ export class ForgeContext {
                         texture.repeat.set(normalizedRepeatX, normalizedRepeatY); // Adjust scale.
                         threeMaterial.needsUpdate = texture.needsUpdate = true;
 
-                        if (!this.viewer) return;                        
+                        if (!this.viewer) return;
                         this.viewer.impl.invalidate(true, true, true); // Re-render.
                     }
                 );
@@ -555,12 +556,12 @@ export class ForgeContext {
         if (!this.viewer) return [];
 
         let stack = [...dbIds];
-        let allDbIds: (number|undefined)[] =  [];
+        let allDbIds: (number | undefined)[] = [];
         const it = this.viewer.model.getData().instanceTree;
         while (stack.length > 0) {
             let dbId = stack.pop();
             allDbIds.push(dbId);
-            it.enumNodeChildren(dbId, (cId:number) => {
+            it.enumNodeChildren(dbId, (cId: number) => {
                 if (allDbIds.indexOf(cId) == -1) {
                     stack.push(cId);
                 }
@@ -574,7 +575,7 @@ export class ForgeContext {
         return result;
     }
     private uuidv4() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
@@ -586,7 +587,7 @@ export class ForgeContext {
         let bbox = this.getModelBoundingBox();
         const min = bbox[0];
         const max = bbox[1];
-        let middle = new THREE.Vector3((min.x + max.x) / 2,(min.y + max.y) / 2, (min.z + max.z) / 2 );
+        let middle = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
         this.viewer.navigation.setPivotPoint(middle)
     }
 

@@ -19,6 +19,8 @@ export class ElfsquadForgeViewer extends HTMLElement {
     private _footprintEnabled = false;
     private _labelsEnabled = false;
 
+    private _mainCameraPosition: CameraPosition | null = null;
+
     constructor() {
         super();
         this._viewerContainerDiv = document.createElement('div');
@@ -158,6 +160,22 @@ export class ElfsquadForgeViewer extends HTMLElement {
         else {
             this.labelsToggleButton!.innerHTML = require("./icons/tag.svg") as string;
         }
+    }
+
+    public setHome(cameraPosition: CameraPosition): void {
+        if (!this._mainCameraPosition) {
+            const cameraButton = document.createElement('button');
+            cameraButton.innerHTML = require("./icons/home.svg") as string;
+            cameraButton.onclick = () => this.home();
+            this._actionsDiv!.insertBefore(cameraButton, this._actionsDiv!.firstChild);
+        }
+
+        this._mainCameraPosition = cameraPosition;
+    }
+    
+    public home(): void {
+        if (!this._mainCameraPosition) return;
+        this._forgeContext?.applyCamera(this._mainCameraPosition);
     }
 
     public disableLabels(){
