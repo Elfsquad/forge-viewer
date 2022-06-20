@@ -5,9 +5,10 @@ import { ThreeHelpers } from "./threeHelpers";
 
 export class FootprintManager {
     private footprintUnit: string = 'mm';
-    // private footprintNeedsUpdate = false;
+    private unitPicker: HTMLElement;
+    public isShowing: boolean = false;
 
-    constructor(private forgeContext: ForgeContext) {
+    constructor(private forgeContext: ForgeContext, private parentElement: HTMLElement | null) {
 
         this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
             if (this.isFootprintEnabled() || this.forgeContext.nameLabelsManager.nameLabelsEnabled) {
@@ -16,6 +17,29 @@ export class FootprintManager {
             }
         });
 
+        this.initializeUnitPickerElement();
+    }
+
+    private initializeUnitPickerElement() {
+        if (!this.parentElement) return;
+
+        this.unitPicker = document.createElement('select');
+        this.unitPicker.classList.add('footprint-unit-picker');
+        this.unitPicker.style.display = 'none';
+        this.unitPicker.addEventListener('change', (e) => {
+            this.footprintUnit = (e.target as HTMLSelectElement).value;
+            const bbox = this.forgeContext.getModelBoundingBox();
+            this.updateLabelUnits(bbox[0], bbox[1]);
+        });
+
+        for (let unit of ['mm', 'cm', 'm', 'inch', 'feet']) {
+            const option = document.createElement('option');
+            option.value = unit;
+            option.textContent = unit;
+            this.unitPicker.appendChild(option);
+        }
+
+        this.parentElement.appendChild(this.unitPicker);
     }
 
     public toggle() {
@@ -34,6 +58,9 @@ export class FootprintManager {
         this.drawBoundingBox(min, max, 'footprint');
         this.addLabels(min, max);
         this.updateLabelUnits(min, max);
+
+        this.unitPicker.style.display = 'block';
+        this.isShowing = true;
     }
 
     public hide() {
@@ -43,6 +70,9 @@ export class FootprintManager {
         this.forgeContext.labelManager.removeLabel('footprint-width');
         this.forgeContext.labelManager.removeLabel('footprint-height');
         this.forgeContext.labelManager.removeLabel('footprint-depth');
+
+        this.unitPicker.style.display = 'none';
+        this.isShowing = false;
     }
 
     private drawBoundingBox(min: THREE.Vector3, max: THREE.Vector3, renderOverlayName: string) {

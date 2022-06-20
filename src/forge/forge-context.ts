@@ -67,7 +67,7 @@ export class ForgeContext {
     }
 
     private initializeFootprintManager() {
-        this.footprintManager = new FootprintManager(this);
+        this.footprintManager = new FootprintManager(this, this._element);
     }
 
     private intializeNameLabelsManager() {
@@ -133,9 +133,9 @@ export class ForgeContext {
             }
 
             (<any>this.viewer).impl.invalidate(true);
-            (<any>this.viewer).impl.sceneUpdated(true);
-
-            resolve();
+            (<any>this.viewer).impl.sceneUpdated(true);                 
+            this.setPivotPoint();
+            resolve();            
         });
 
         return promise;

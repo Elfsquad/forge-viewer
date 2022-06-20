@@ -67,3 +67,14 @@
         .configuration-overview-element.selected{
             border: solid 2px;
         }
+
+.footprint-unit-picker {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    z-index: 10;
+    padding: 8px;
+    border-radius: 4px 4px 0 0;
+    background-color: #e4e4e4;
+    border: none;
+}

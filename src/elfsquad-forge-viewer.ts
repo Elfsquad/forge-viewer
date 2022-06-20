@@ -111,12 +111,13 @@ export class ElfsquadForgeViewer extends HTMLElement {
         }
     }
 
+    private footprintToggleButton: HTMLButtonElement | null = null;
     public enableFootprint() {
         this._footprintEnabled = true;
-        const footprintToggleButton = document.createElement('button');
-        footprintToggleButton.innerHTML = require("./icons/bounding-box.svg") as string;
-        footprintToggleButton.onclick = () => this.toggleFootprint();
-        this._actionsDiv!.appendChild(footprintToggleButton);
+        this.footprintToggleButton = document.createElement('button');
+        this.footprintToggleButton.innerHTML = require("./icons/bounding-box.svg") as string;
+        this.footprintToggleButton.onclick = () => this.toggleFootprint();
+        this._actionsDiv!.appendChild(this.footprintToggleButton);
     }
 
     private labelsToggleButton: HTMLButtonElement | null = null;
@@ -136,6 +137,13 @@ export class ElfsquadForgeViewer extends HTMLElement {
         }
 
         this._forgeContext?.footprintManager.toggle();
+
+        if (this._forgeContext?.footprintManager.isShowing) {
+            this.footprintToggleButton!.innerHTML = require("./icons/bounding-box-off.svg") as string;
+        }
+        else {
+            this.footprintToggleButton!.innerHTML = require("./icons/bounding-box.svg") as string;
+        }
     }
 
     public toggleLabels() {
