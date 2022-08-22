@@ -296,8 +296,14 @@ export class ForgeContext {
 
     private originalMaterials: { [fragId: string]: any } = {};
     private originalColors: { [fragId: string]: any } = {};
-    private toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
+    private async toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
         if (!this.viewer) { return; }
+
+        const state = this.viewer.getState();
+        for(const objSet of state.objectSet) {
+          objSet.hidden = [];
+        }
+        await this.restoreState(state);
 
         let mapped3dItems = linked3dModel.mapped3dItems;
 
