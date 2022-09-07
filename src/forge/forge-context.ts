@@ -6,7 +6,7 @@ import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
 
 export class ForgeContext {
-    private _element: HTMLElement | null = null;
+    public _element: HTMLElement;
     private _token: string | null = null;
     public viewer: Autodesk.Viewing.Viewer3D;
 
@@ -76,7 +76,7 @@ export class ForgeContext {
 
     private initializeLabelManager() {
 
-        this.labelManager = new LabelManager(this.viewer);
+        this.labelManager = new LabelManager(this);
 
         const style = document.createElement('style');
         style.textContent = `
@@ -100,7 +100,7 @@ export class ForgeContext {
                     vertical-align: super;
             }
         `;
-        document.head.append(style);
+        this._element.append(style);
     }
 
     public applyLayout(layout3d: Layout3d[]): Promise<void> {

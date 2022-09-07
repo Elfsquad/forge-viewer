@@ -1,9 +1,10 @@
+import { ForgeContext } from "./forge-context";
 
 export class Label3DManager {
 
     private labels: { [key: string]: HTMLDivElement };
 
-    constructor(private viewer: any) {
+    constructor(private forgeContext: ForgeContext) {
         this.labels = {};
         
 
@@ -27,7 +28,7 @@ export class Label3DManager {
         else {
             this.labels[name] = label;
         }
-        document.body.append(label);
+        this.forgeContext._element!.append(label);
         return label;
     }
 
@@ -53,13 +54,12 @@ export class Label3DManager {
         this.getLabel(name).innerHTML = `<span>${text}</span>` + '<span class="label-icon">' + require('../icons/pencil.svg') + '</span>';
     }
 
-    public setLabelPosition(name: string, position: any): void {
+    public setLabelPosition(name: string, position: THREE.Vector3): void {
         try {
             const label = this.getLabel(name);
-            const viewRect = this.viewer.canvas.getBoundingClientRect();
             const rect = label.getBoundingClientRect();
-            label.style.left = Math.round(viewRect.left + position.x - rect.width / 2) + 'px';
-            label.style.top = Math.round(viewRect.top + position.y - rect.height / 2) + 'px';
+            label.style.left = Math.round(position.x - rect.width / 2) + 'px';
+            label.style.top = Math.round(position.y - rect.height / 2) + 'px';
         }
         catch (error) {
             throw new Error();
