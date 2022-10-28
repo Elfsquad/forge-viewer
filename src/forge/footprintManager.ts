@@ -49,6 +49,12 @@ export class FootprintManager {
             this.show();
     }
 
+    public redraw() {
+        if (!this.isShowing) return;
+        this.hide();
+        this.show();
+    }
+
     public show() {    
         const bbox = this.forgeContext.getModelBoundingBox();
 

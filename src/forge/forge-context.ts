@@ -103,7 +103,7 @@ export class ForgeContext {
         this._element.append(style);
     }
 
-    public applyLayout(layout3d: Layout3d[]): Promise<void> {
+    public applyLayout(layout3d: Layout3d[]): Promise<void> {       
         let promise = new Promise<void>(async (resolve, reject) => {
             if (this.viewer == null) {
                 reject(Error("Viewer is not yet initialized"));
@@ -124,7 +124,7 @@ export class ForgeContext {
 
                 if (!(layout.configurationId in this.loaded3dModels)) {
                     const model = await this.loadModel(layout);
-                    this.toggleInViewer(model, layout);
+                    await this.toggleInViewer(model, layout);
                 } else {
                     let loadedModel = this.loaded3dModels[layout.configurationId];
                     this.moveModel(loadedModel, layout);
@@ -135,6 +135,7 @@ export class ForgeContext {
             (<any>this.viewer).impl.invalidate(true);
             (<any>this.viewer).impl.sceneUpdated(true);                 
             this.setPivotPoint();
+            this.footprintManager.redraw();
             resolve();            
         });
 
