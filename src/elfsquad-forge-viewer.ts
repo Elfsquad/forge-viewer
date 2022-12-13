@@ -53,6 +53,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
         this.initializeSettings();
         this.initializeActions();
+        this.initializeResizeObserver();
     }
     
     /**
@@ -200,5 +201,13 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     private emitConfigurationSelected(configurationId: string) {
         this.dispatchEvent(new CustomEvent('onConfigurationSelected', { detail: configurationId }));
+    }
+
+    private initializeResizeObserver() {
+        if (!window.ResizeObserver) return;
+        const resizeObserver = new ResizeObserver(() => {
+            this._forgeContext?.viewer.resize();
+        });
+        resizeObserver.observe(this._viewerContainerDiv);
     }
 }
