@@ -63,17 +63,15 @@ export class NameLabelsManager {
         const min = bbox[0];
         const max = bbox[1];
         this.updateLabelPositions(min, max);
-        //this.elfsquad.emit('labelsUpdated', this.labels);
     }
 
     public hideNameLabels() {
-        this.forgeContext.labelManager.removeAllLabels();
         for (var i = 0; i < this.labels.length; i++) {
+            this.forgeContext.labelManager.removeLabel(this.labels[i].configurationId);
             delete this.labels[i];
         }
         this.labels = [];
         this.nameLabelsEnabled = false;
-        Array.from(document.getElementsByClassName('configuration-label')).forEach(e => e.remove())
     }
 
     public isNameLabelsEnabled(): boolean {
