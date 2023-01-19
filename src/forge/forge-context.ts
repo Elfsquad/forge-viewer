@@ -56,14 +56,26 @@ export class ForgeContext {
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);
                 this.viewer.disableHighlight(true);
+                this.viewer.impl.createOverlayScene(this._overlayScene);
                 this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
                 this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
                 this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());
+                this.update();
                 resolve();
             });
         });
 
         return promise;
+    }
+
+    private update() {
+        requestAnimationFrame(() => this.update());
+        let invalidate = false;
+        for (let spinner of Object.values(this._loadModelSpinners)) {
+            spinner.rotateZ(0.07);
+            invalidate = true;
+        }
+        if (invalidate) this.viewer.impl.invalidate(true);
     }
 
     private initializeFootprintManager() {
@@ -190,16 +202,21 @@ export class ForgeContext {
     }
 
     private _loadModelPromises: { [configurationId: string]: { resolve: any, reject: Function } } = {};
+    private _loadModelSpinners: { [configurationId: string]: THREE.Object3D } = {};
     private _layouts: Layout3d[] = [];
+
+    private _overlayScene = "overlayscene";
 
     private loadModel(layout3d: Layout3d): Promise<Autodesk.Viewing.Model> {
         let promise = new Promise<Autodesk.Viewing.Model>((resolve, reject) => {
+
+            this.addLoadingSpinner(layout3d);
 
             Autodesk.Viewing.Document.load(
                 `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
                     if (this.viewer == null) return;
-
+                    
                     this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
@@ -224,6 +241,16 @@ export class ForgeContext {
     }
 
     private _geometryLoaded: boolean[] = [];
+
+    private addLoadingSpinner(layout3d: Layout3d) {
+        var spinnerGeometry = new (<any>THREE).TorusGeometry(64, 12, 16, 100, 5);
+        var spinnerMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        var spinner = new THREE.Mesh(spinnerGeometry, spinnerMaterial);
+        spinner.position.set(layout3d.x, layout3d.y, layout3d.z);
+        this._loadModelSpinners[layout3d.configurationId] = spinner;
+        this.viewer.impl.addOverlay(this._overlayScene, spinner);
+    }
+
     private onGeometryLoaded(e: any) {
         this._geometryLoaded[e.model.id] = true;
         this.resolveLoadedModel(e.model);
@@ -247,6 +274,12 @@ export class ForgeContext {
 
         this._loadModelPromises[configurationId].resolve(model);
         delete this._loadModelPromises[configurationId];
+
+        if (this._loadModelSpinners[configurationId]) {
+            const spinner = this._loadModelSpinners[configurationId];
+            this.viewer.impl.removeOverlay(this._overlayScene, spinner);
+            delete this._loadModelSpinners[configurationId];
+        }
     }
 
     private configurationIdForModel(model: Autodesk.Viewing.Model): string | null {
