@@ -16,6 +16,11 @@ export class FootprintManager {
                 this.updateLabelPositions(bbox[0], bbox[1]);
             }
         });
+        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
+            if (this.isFootprintEnabled()) {
+               this.redraw();
+            }
+        });
 
         this.initializeUnitPickerElement();
     }
