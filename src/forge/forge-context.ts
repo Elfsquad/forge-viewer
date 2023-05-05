@@ -4,6 +4,7 @@ import { Label3DManager as LabelManager } from "./labelmanager";
 import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
+import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 
 export class ForgeContext {
     public _element: HTMLElement;
@@ -17,20 +18,27 @@ export class ForgeContext {
     public loaded3dModels: { [configurationId: string]: Autodesk.Viewing.Model } = {};
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
+    private onLoadStart: ((event: Layout3d) => void) | null;
 
     constructor() { }
 
-    public async initialize(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null = null): Promise<void> {
+    public async initialize(
+        element: HTMLElement,
+        onProgess: ((event: ViewerProgressEvent) => void) | null = null,
+        onLoadStart: ((event: Layout3d) => void) | null = null,
+        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
+    ): Promise<void> {
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
 
         this._element = element;
         await this.initializeViewerToken();
-        await this.initializeViewer(this._element, onProgess);
+        await this.initializeViewer(this._element, onProgess, onLoadEnd);
         this.intializeNameLabelsManager();
         this.initializeLabelManager();
         this.initializeFootprintManager();
+        this.onLoadStart = onLoadStart;
     }
 
     public focus(): void {
@@ -42,7 +50,7 @@ export class ForgeContext {
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null): Promise<void> {
+    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null): Promise<void> {
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
@@ -59,6 +67,8 @@ export class ForgeContext {
                 this.viewer.impl.createOverlayScene(this._overlayScene);
                 this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
                 this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
+                if (onLoadEnd)
+                    this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => onLoadEnd(e));
                 this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());
                 this.update();
                 resolve();
@@ -115,7 +125,7 @@ export class ForgeContext {
         this._element.append(style);
     }
 
-    public applyLayout(layout3d: Layout3d[]): Promise<void> {       
+    public applyLayout(layout3d: Layout3d[]): Promise<void> {
         let promise = new Promise<void>(async (resolve, reject) => {
             if (this.viewer == null) {
                 reject(Error("Viewer is not yet initialized"));
@@ -145,10 +155,10 @@ export class ForgeContext {
             }
 
             (<any>this.viewer).impl.invalidate(true);
-            (<any>this.viewer).impl.sceneUpdated(true);                 
+            (<any>this.viewer).impl.sceneUpdated(true);
             this.setPivotPoint();
             this.footprintManager.redraw();
-            resolve();            
+            resolve();
         });
 
         return promise;
@@ -208,6 +218,8 @@ export class ForgeContext {
     private _overlayScene = "overlayscene";
 
     private loadModel(layout3d: Layout3d): Promise<Autodesk.Viewing.Model> {
+        if (this.onLoadStart)
+            this.onLoadStart(layout3d);
         let promise = new Promise<Autodesk.Viewing.Model>((resolve, reject) => {
 
             this.addLoadingSpinner(layout3d);
@@ -216,7 +228,7 @@ export class ForgeContext {
                 `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
                     if (this.viewer == null) return;
-                    
+
                     this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
@@ -334,8 +346,8 @@ export class ForgeContext {
         if (!this.viewer) { return; }
 
         const state = this.viewer.getState();
-        for(const objSet of state.objectSet) {
-          objSet.hidden = [];
+        for (const objSet of state.objectSet) {
+            objSet.hidden = [];
         }
         await this.restoreState(state);
 
@@ -468,7 +480,7 @@ export class ForgeContext {
         while (stack.length > 0) {
             let id = stack.pop();
             callback(id);
-            instanceTree.enumNodeChildren(id, function(childId: any) {
+            instanceTree.enumNodeChildren(id, function (childId: any) {
                 if (!instanceTree.isNodeOff(childId)) {
                     stack.push(childId);
                 }
@@ -615,7 +627,7 @@ export class ForgeContext {
         return result;
     }
     private uuidv4() {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
