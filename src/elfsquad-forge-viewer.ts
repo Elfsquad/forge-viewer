@@ -3,6 +3,7 @@ import { ForgeContext } from "./forge/forge-context";
 import styles from './elfsquad-forge-viewer.css';
 import { ElfsquadConfigurationOverview } from "./overview-element";
 import { ViewerProgressEvent } from "./forge/models/progressEvent";
+import { GeometryLoadedEvent } from "./forge/models/geometryLoadedEvent";
 
 
 export class ElfsquadForgeViewer extends HTMLElement {
@@ -61,11 +62,16 @@ export class ElfsquadForgeViewer extends HTMLElement {
      * @param layout3d - Layout that should be applied on initialization.
      * @param onProgess - Callback function to listen to loading progress events.
      */
-    public async initialize(layout3d: Layout3d[], onProgess: ((event: ViewerProgressEvent) => void)|null = null): Promise<void> {
+    public async initialize(
+        layout3d: Layout3d[], 
+        onProgess: ((event: ViewerProgressEvent) => void) | null = null,
+        onLoadStart: ((event: Layout3d) => void) | null = null,
+        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
+        ): Promise<void> {
         if (!this._viewerContainerDiv) return;
 
         this._forgeContext = new ForgeContext();
-        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess);
+        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess, onLoadStart, onLoadEnd);    
 
         
         this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
