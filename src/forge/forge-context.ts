@@ -441,8 +441,8 @@ export class ForgeContext {
                 const itemIds = this.dbIdsByName[model.id][item.toLowerCase()];
                 if (itemIds && itemIds.length > 0) {
                     for (const parentId of itemIds) {
-                        this.recursiveEnumerateVisibleItems(instanceTree, parentId, (itemId: any) => {
-                            this.applyMaterial(itemId, mapped3dItems.itemMaterials[item], fragmentList);
+                        await this.recursiveEnumerateVisibleItems(instanceTree, parentId, async (itemId: any) => {
+                            await this.applyMaterial(itemId, mapped3dItems.itemMaterials[item], fragmentList);
                         });
                     }
                 }
@@ -451,10 +451,10 @@ export class ForgeContext {
 
         this.viewer.impl.invalidate(true);
         this.viewer.impl.sceneUpdated(true);
-        this.setPivotPoint();
+        this.setPivotPoint();        
     }
 
-    private applyMaterial(itemId: number, material: Material, fragmentList: any) {
+    private async applyMaterial(itemId: number, material: Material, fragmentList: any): Promise<any> {
         if (!this.viewer) return;
 
         const frags = this.dbsToFrags([itemId]);
@@ -467,19 +467,19 @@ export class ForgeContext {
             }
             const originalMaterial = this.originalMaterials[fragId];
             let clonedMaterial = this.cloneMaterial(originalMaterial);
-            clonedMaterial = this.applyMaterialChanges(clonedMaterial, material, fragId);
+            clonedMaterial = await this.applyMaterialChanges(clonedMaterial, material, fragId);
             this.applyMaterialToFragId(clonedMaterial, fragId, fragmentList);
         }
     }
 
-    private recursiveEnumerateVisibleItems(instanceTree: any, dbId: number, callback: Function) {
+    private async recursiveEnumerateVisibleItems(instanceTree: any, dbId: number, callback: Function): Promise<any> {
         let stack = [dbId];
 
         if (instanceTree.isNodeOff(dbId)) { return; }
 
         while (stack.length > 0) {
             let id = stack.pop();
-            callback(id);
+            await callback(id);
             instanceTree.enumNodeChildren(id, function (childId: any) {
                 if (!instanceTree.isNodeOff(childId)) {
                     stack.push(childId);
@@ -531,7 +531,7 @@ export class ForgeContext {
         return newMaterial;
     }
 
-    private applyMaterialChanges(threeMaterial: any, material: any, fragId: number) {
+    private async applyMaterialChanges(threeMaterial: any, material: any, fragId: number): Promise<any> {
         if (!this.viewer) return;
 
         // Get the size of the object.
@@ -564,20 +564,17 @@ export class ForgeContext {
 
         for (const key of ['map', 'specularMap', 'bumpMap']) {
             if (material[key]) {
-                this.loadTexture(material[key], material, threeMaterial,
-                    (texture: any) => {
-                        threeMaterial[key] = texture;
-                        // Normalize all the material textures to the object size.
-                        const normalizedRepeatX = material.textureRepeatX / size,
-                            normalizedRepeatY = material.textureRepeatY / size;
+                const texture = await this.loadTexture(material[key], material, threeMaterial);
+                threeMaterial[key] = texture;
+                // Normalize all the material textures to the object size.
+                const normalizedRepeatX = material.textureRepeatX / size,
+                    normalizedRepeatY = material.textureRepeatY / size;
 
-                        texture.repeat.set(normalizedRepeatX, normalizedRepeatY); // Adjust scale.
-                        threeMaterial.needsUpdate = texture.needsUpdate = true;
+                texture.repeat.set(normalizedRepeatX, normalizedRepeatY); // Adjust scale.
+                threeMaterial.needsUpdate = texture.needsUpdate = true;
 
-                        if (!this.viewer) return;
-                        this.viewer.impl.invalidate(true, true, true); // Re-render.
-                    }
-                );
+                if (!this.viewer) return;
+                this.viewer.impl.invalidate(true, true, true); // Re-render.
             }
         }
 
@@ -585,16 +582,21 @@ export class ForgeContext {
     }
 
 
-    private loadTexture(path: string, material: Material, threeMaterial: any, callbackfn: any): any {
-        const loader = new THREE.TextureLoader();
-        loader.crossOrigin = '';
-        loader.load(path,
-            (texture) => {
-                this.applyTextureData(material, texture);
-                threeMaterial.needsUpdate = texture.needsUpdate = true;
-                callbackfn(texture);
-            }
-        );
+    private loadTexture(path: string, material: Material, threeMaterial: any): Promise<THREE.Texture> {
+        let promise = new Promise<any>((resolve, _) => {
+            const loader = new THREE.TextureLoader();
+            loader.crossOrigin = '';
+            loader.load(path,
+                (texture) => {
+                    this.applyTextureData(material, texture);
+                    threeMaterial.needsUpdate = texture.needsUpdate = true;
+                    resolve(texture);
+                }
+            );
+        });
+
+        return promise;
+        
     }
 
     private applyTextureData(material: Material, texture: any) {
