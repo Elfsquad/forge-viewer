@@ -538,7 +538,7 @@ export class ForgeContext {
         const bbox = new THREE.Box3();
         const fragments = this.viewer.model.getFragmentList();
         fragments.getWorldBounds(fragId, bbox);
-        const size = bbox.min.distanceTo(bbox.max);
+        const size = bbox.min.distanceTo(bbox.max) / 1000;
 
         threeMaterial.name = material.name;
         threeMaterial.color = new THREE.Color(material.color);
