@@ -66,12 +66,13 @@ export class ElfsquadForgeViewer extends HTMLElement {
         layout3d: Layout3d[], 
         onProgess: ((event: ViewerProgressEvent) => void) | null = null,
         onLoadStart: ((event: Layout3d) => void) | null = null,
-        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
+        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null,
+        useStreaming: boolean = false
         ): Promise<void> {
         if (!this._viewerContainerDiv) return;
 
         this._forgeContext = new ForgeContext();
-        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess, onLoadStart, onLoadEnd);    
+        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess, onLoadStart, onLoadEnd, useStreaming);    
 
         
         this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {

@@ -26,7 +26,8 @@ export class ForgeContext {
         element: HTMLElement,
         onProgess: ((event: ViewerProgressEvent) => void) | null = null,
         onLoadStart: ((event: Layout3d) => void) | null = null,
-        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
+        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null,
+        useStreaming: boolean = false
     ): Promise<void> {
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
@@ -34,7 +35,7 @@ export class ForgeContext {
 
         this._element = element;
         await this.initializeViewerToken();
-        await this.initializeViewer(this._element, onProgess, onLoadEnd);
+        await this.initializeViewer(this._element, onProgess, onLoadEnd, useStreaming);
         this.intializeNameLabelsManager();
         this.initializeLabelManager();
         this.initializeFootprintManager();
@@ -50,11 +51,13 @@ export class ForgeContext {
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null): Promise<void> {
+    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null, useStreaming : boolean = false): Promise<void> {
+        (<any>window).USE_OPFS = true; //https://aps.autodesk.com/blog/viewer-performance-update-part-2-3-opfs-caching
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
-                env: 'AutodeskProduction',
+                env: 'AutodeskProduction2',
+                api: useStreaming ? 'streamingV2_EU' : 'derivativeV2',
                 accessToken: this._token as string
             }, () => {
                 this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
@@ -234,18 +237,10 @@ export class ForgeContext {
 
                     const root = viewerDocument.getRoot();
             
-                    // Find the SVF2 derivative, if available
-                    const svf2Viewable = root.search({
-                        'type': 'geometry',
-                        'role': '3d',
-                        'mime': 'application/autodesk-svf2'
-                    });
-            
-                    const viewableToLoad = svf2Viewable.length > 0 ? svf2Viewable[0] : root.getDefaultGeometry();
-            
-                    this.viewer.loadModel(viewerDocument.getViewablePath(viewableToLoad), {
+                    this.viewer.loadModel(viewerDocument.getViewablePath(root.getDefaultGeometry()), {
                         applyScaling: 'mm',
-                        loadAsHidden: true
+                        loadAsHidden: true,
+                        acmSessionId: viewerDocument.acmSessionId
                     },
                     (model) => {
                         this.loaded3dModels[layout3d.configurationId] = model;
