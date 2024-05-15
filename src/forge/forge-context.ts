@@ -228,25 +228,38 @@ export class ForgeContext {
                 `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
                     if (this.viewer == null) return;
-
+            
                     this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
-                    const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
-                    this.viewer.loadModel(viewerDocument.getViewablePath(defaultModel), {
+                    const root = viewerDocument.getRoot();
+            
+                    // Find the SVF2 derivative, if available
+                    const svf2Viewable = root.search({
+                        'type': 'geometry',
+                        'role': '3d',
+                        'mime': 'application/autodesk-svf2'
+                    });
+            
+                    const viewableToLoad = svf2Viewable.length > 0 ? svf2Viewable[0] : root.getDefaultGeometry();
+            
+                    this.viewer.loadModel(viewerDocument.getViewablePath(viewableToLoad), {
                         applyScaling: 'mm',
                         loadAsHidden: true
                     },
-                        (model) => {
-                            this.loaded3dModels[layout3d.configurationId] = model;
-                            this.moveModel(model, layout3d);
-                        });
-
+                    (model) => {
+                        this.loaded3dModels[layout3d.configurationId] = model;
+                        this.moveModel(model, layout3d);
+                        resolve(model);
+                    });
+            
                 },
                 (err) => {
                     console.error('document load error', err)
                     reject(err);
-                });
+                }
+            );
+            
         });
 
         return promise;
