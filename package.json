@@ -1,6 +1,6 @@
 {
   "name": "@elfsquad/forge-viewer",
-  "version": "1.1.13",
+  "version": "1.1.14",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -30,7 +30,7 @@
     "@elfsquad/configurator": "2.0.2"
   },
   "devDependencies": {
-    "@types/forge-viewer": "7.61.0",
+    "@types/forge-viewer": "7.89",
     "@types/three": "0.138.0",
     "css-loader": "^6.7.1",
     "css-modules-typescript-loader": "^4.0.1",
