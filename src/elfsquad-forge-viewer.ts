@@ -213,7 +213,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
     private initializeResizeObserver() {
         if (!window.ResizeObserver) return;
         const resizeObserver = new ResizeObserver(() => {
-            this._forgeContext?.viewer.resize();
+            this._forgeContext?.viewer?.resize();
         });
         resizeObserver.observe(this._viewerContainerDiv);
     }
