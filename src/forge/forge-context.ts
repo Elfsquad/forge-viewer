@@ -189,7 +189,7 @@ export class ForgeContext {
         this.setPivotPoint();
     }
 
-    private restoreState(targetState: ViewerState): Promise<void> {
+    private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
         // https://forge.autodesk.com/blog/wait-restorestate-finish
         var promise = new Promise<void>((resolve, _) => {
             var listener = (event: any) => {
@@ -208,8 +208,12 @@ export class ForgeContext {
                 listener
             );
 
-            this.viewer.restoreState(targetState);
+            // When preserveCamera is true, exclude viewport from restore to avoid
+            // overriding active camera transitions with intermediate states
+            const filter = options?.preserveCamera ? { viewport: false } : undefined;
+            this.viewer.restoreState(targetState, filter, false);
         });
+
 
         return promise;
     }
@@ -357,7 +361,10 @@ export class ForgeContext {
         for (const objSet of state.objectSet) {
             objSet.hidden = [];
         }
-        await this.restoreState(state);
+
+        // Preserve camera to avoid overriding active camera transitions
+        // with intermediate states captured during animation
+        await this.restoreState(state, { preserveCamera: true });
 
         let mapped3dItems = linked3dModel.mapped3dItems;
 
