@@ -207,11 +207,20 @@ export class ForgeContext {
         }
         viewerState.renderOptions.appearance.progressiveDisplay = false;
 
-        // Lock navigation during restoreState's camera animation to
-        // prevent user orbit input from fighting the transition.
-        (this.viewer.navigation as any).setIsLocked(true);
-        await this.restoreState(viewerState);
-        (this.viewer.navigation as any).setIsLocked(false);
+        // Block pointer events during the animation to prevent user
+        // orbit from fighting the restoreState transition (fly-off).
+        // Re-enable after the animation completes or on any user
+        // interaction attempt (so it doesn't feel unresponsive).
+        this._element.style.pointerEvents = 'none';
+        const unblock = () => { this._element.style.pointerEvents = ''; };
+        this._element.addEventListener('pointerdown', unblock, { once: true, capture: true });
+
+        try {
+            await this.restoreState(viewerState);
+        } finally {
+            unblock();
+            this._element.removeEventListener('pointerdown', unblock, { capture: true });
+        }
         this.setPivotPoint();
     }
 
