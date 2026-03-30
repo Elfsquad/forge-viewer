@@ -19,6 +19,7 @@ export class ForgeContext {
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
     private onLoadStart: ((event: Layout3d) => void) | null;
+    private _applyCameraPromise: Promise<void> | null = null;
 
     constructor() { }
 
@@ -135,6 +136,15 @@ export class ForgeContext {
                 return;
             }
 
+            // Wait for any in-flight camera animation to finish before
+            // proceeding. Both applyCamera and toggleInViewer use
+            // restoreState which listens for FINAL_FRAME_RENDERED_CHANGED_EVENT
+            // — running them concurrently causes one to prematurely
+            // resolve the other.
+            if (this._applyCameraPromise) {
+                await this._applyCameraPromise;
+            }
+
             for (let configurationId of Object.keys(this.loaded3dModels)) {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
@@ -167,7 +177,18 @@ export class ForgeContext {
         return promise;
     }
 
-    public async applyCamera(camera: CameraPosition, configurationId: string | null = null): Promise<void> {
+    public applyCamera(camera: CameraPosition, configurationId: string | null = null): Promise<void> {
+        const p = this.applyCameraInternal(camera, configurationId);
+        this._applyCameraPromise = p;
+        p.finally(() => {
+            if (this._applyCameraPromise === p) {
+                this._applyCameraPromise = null;
+            }
+        });
+        return p;
+    }
+
+    private async applyCameraInternal(camera: CameraPosition, configurationId: string | null): Promise<void> {
         if (!camera.state) { return; }
 
         let viewerState = JSON.parse(camera.state) as ViewerState;
