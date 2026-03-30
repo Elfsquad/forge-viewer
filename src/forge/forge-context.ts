@@ -3,7 +3,7 @@ import { FootprintManager } from "./footprintManager";
 import { Label3DManager as LabelManager } from "./labelmanager";
 import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
-import { ViewerState } from "./viewerState";
+import { ViewerState, Viewport } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 
 export class ForgeContext {
@@ -188,6 +188,8 @@ export class ForgeContext {
         return p;
     }
 
+    private static CAMERA_ANIM_MS = 600;
+
     private async applyCameraInternal(camera: CameraPosition, configurationId: string | null): Promise<void> {
         if (!camera.state) { return; }
 
@@ -205,30 +207,76 @@ export class ForgeContext {
                 viewerState.viewport.eye[2] += settings.z;
             }
         }
-        viewerState.renderOptions.appearance.progressiveDisplay = false;
 
-        // Block pointer events during the animation to prevent user
-        // orbit from fighting the restoreState transition (fly-off).
-        // Re-enable after the animation completes or on any user
-        // interaction attempt (so it doesn't feel unresponsive).
-        this._element.style.pointerEvents = 'none';
-        const unblock = () => { this._element.style.pointerEvents = ''; };
-        this._element.addEventListener('pointerdown', unblock, { once: true, capture: true });
-
-        // Only restore the viewport (camera). The saved state JSON
-        // includes objectSet/visibility from when it was captured —
-        // restoring that would overwrite current visibility with stale
-        // data. Merge our target viewport into the current live state.
-        const liveState = this.viewer.getState();
-        liveState.viewport = viewerState.viewport;
-
-        try {
-            await this.restoreState(liveState);
-        } finally {
-            unblock();
-            this._element.removeEventListener('pointerdown', unblock, { capture: true });
-        }
+        // Animate using direct navigation API — never restoreState.
+        // restoreState applies the full viewer state (including
+        // visibility/objectSet), which overwrites current visibility
+        // and causes "one update behind" bugs.
+        await this.animateCamera(viewerState.viewport);
         this.setPivotPoint();
+    }
+
+    private animateCamera(target: Viewport): Promise<void> {
+        const nav = this.viewer.navigation;
+        const cam = nav.getCamera();
+
+        const startEye = cam.position.clone();
+        const startTarget = (cam as any).target.clone();
+        const startUp = cam.up.clone();
+
+        const endEye = new THREE.Vector3(target.eye[0], target.eye[1], target.eye[2]);
+        const endTarget = new THREE.Vector3(target.target[0], target.target[1], target.target[2]);
+        const endUp = new THREE.Vector3(target.up[0], target.up[1], target.up[2]);
+
+        return new Promise<void>((resolve) => {
+            let cancelled = false;
+            let rafId: number;
+            const t0 = performance.now();
+
+            const finish = () => {
+                if (cancelled) return;
+                cancelled = true;
+                cancelAnimationFrame(rafId);
+                this._element.removeEventListener('pointerdown', onInteract);
+                this._element.removeEventListener('wheel', onInteract);
+                this.setPivotPoint();
+                resolve();
+            };
+
+            const onInteract = () => { finish(); };
+
+            // Cancel on user interaction so orbit takes over cleanly
+            this._element.addEventListener('pointerdown', onInteract);
+            this._element.addEventListener('wheel', onInteract);
+
+            const eye = new THREE.Vector3();
+            const tgt = new THREE.Vector3();
+            const up = new THREE.Vector3();
+
+            const tick = (now: number) => {
+                if (cancelled) return;
+                const elapsed = now - t0;
+                // Ease-out quadratic
+                const raw = Math.min(elapsed / ForgeContext.CAMERA_ANIM_MS, 1);
+                const t = 1 - (1 - raw) * (1 - raw);
+
+                eye.lerpVectors(startEye, endEye, t);
+                tgt.lerpVectors(startTarget, endTarget, t);
+                up.lerpVectors(startUp, endUp, t).normalize();
+
+                cam.up.copy(up);
+                nav.setPosition(eye);
+                nav.setTarget(tgt);
+
+                if (raw < 1) {
+                    rafId = requestAnimationFrame(tick);
+                } else {
+                    finish();
+                }
+            };
+
+            rafId = requestAnimationFrame(tick);
+        });
     }
 
     private restoreState(
