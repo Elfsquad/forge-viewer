@@ -3,7 +3,7 @@ import { FootprintManager } from "./footprintManager";
 import { Label3DManager as LabelManager } from "./labelmanager";
 import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
-import { ViewerState, Viewport } from "./viewerState";
+import { ViewerState } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 
 export class ForgeContext {
@@ -18,7 +18,6 @@ export class ForgeContext {
     public loaded3dModels: { [configurationId: string]: Autodesk.Viewing.Model } = {};
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
-    private _cancelCameraAnimation: (() => void) | null = null;
     private onLoadStart: ((event: Layout3d) => void) | null;
 
     constructor() { }
@@ -136,11 +135,6 @@ export class ForgeContext {
                 return;
             }
 
-            // Cancel any in-flight camera animation so its per-frame
-            // renders don't trigger FINAL_FRAME_RENDERED_CHANGED_EVENT
-            // and prematurely resolve the restoreState in toggleInViewer.
-            this._cancelCameraAnimation?.();
-
             for (let configurationId of Object.keys(this.loaded3dModels)) {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
@@ -192,84 +186,13 @@ export class ForgeContext {
         }
         viewerState.renderOptions.appearance.progressiveDisplay = false;
 
-        // Animate the camera using our own lerp loop instead of
-        // restoreState. restoreState's internal animation conflicts
-        // with user orbit — if the user drags during the transition
-        // both fight over the camera, causing a fly-off. Our loop
-        // cancels instantly on user interaction so the orbit tool
-        // takes over cleanly from wherever the camera is.
-        await this.animateCamera(viewerState.viewport);
+        // Lock navigation during restoreState's camera animation to
+        // prevent user orbit input from fighting the transition.
+        (this.viewer.navigation as any).setIsLocked(true);
+        await this.restoreState(viewerState);
+        (this.viewer.navigation as any).setIsLocked(false);
         this.setPivotPoint();
     }
-
-    private static CAMERA_ANIM_MS = 600;
-
-    private animateCamera(target: Viewport): Promise<void> {
-        this._cancelCameraAnimation?.();
-
-        const nav = this.viewer.navigation;
-        const cam = nav.getCamera();
-
-        const startEye = cam.position.clone();
-        const startTarget = (cam as any).target.clone();
-        const startUp = cam.up.clone();
-
-        const endEye = new THREE.Vector3(target.eye[0], target.eye[1], target.eye[2]);
-        const endTarget = new THREE.Vector3(target.target[0], target.target[1], target.target[2]);
-        const endUp = new THREE.Vector3(target.up[0], target.up[1], target.up[2]);
-
-        return new Promise<void>((resolve) => {
-            let cancelled = false;
-            let rafId: number;
-            const t0 = performance.now();
-
-            const finish = () => {
-                if (cancelled) return;
-                cancelled = true;
-                cancelAnimationFrame(rafId);
-                this._element.removeEventListener('pointerdown', onInteract);
-                this._element.removeEventListener('wheel', onInteract);
-                this._cancelCameraAnimation = null;
-                resolve();
-            };
-
-            const onInteract = () => { finish(); };
-
-            // pointerdown covers mouse, touch, and pen input
-            this._element.addEventListener('pointerdown', onInteract);
-            this._element.addEventListener('wheel', onInteract);
-
-            this._cancelCameraAnimation = finish;
-
-            const eye = new THREE.Vector3();
-            const tgt = new THREE.Vector3();
-            const up = new THREE.Vector3();
-
-            const tick = (now: number) => {
-                if (cancelled) return;
-                const elapsed = now - t0;
-                const raw = Math.min(elapsed / ForgeContext.CAMERA_ANIM_MS, 1);
-                const t = 1 - (1 - raw) * (1 - raw);
-
-                eye.lerpVectors(startEye, endEye, t);
-                tgt.lerpVectors(startTarget, endTarget, t);
-                up.lerpVectors(startUp, endUp, t).normalize();
-
-                cam.up.copy(up);
-                nav.setPosition(eye);
-                nav.setTarget(tgt);
-
-                if (raw < 1) {
-                    rafId = requestAnimationFrame(tick);
-                } else {
-                    finish();
-                }
-            };
-
-            rafId = requestAnimationFrame(tick);
-        });
-    }
-
 
     private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
         // https://forge.autodesk.com/blog/wait-restorestate-finish
