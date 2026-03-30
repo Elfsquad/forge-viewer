@@ -423,7 +423,7 @@ export class ForgeContext {
 
         this.moveModel(model, linked3dModel);
 
-        let instanceTree = this.viewer.model.getData().instanceTree;
+        let instanceTree = model.getData().instanceTree;
 
         for (let visibleItem of mapped3dItems.visibleItems) {
             let itemIds = this.dbIdsByName[model.id][visibleItem.toLowerCase()];
@@ -454,7 +454,7 @@ export class ForgeContext {
         }
         for (let fragId in this.originalColors) {
             let color = this.originalColors[fragId];
-            let material = (<any>this.viewer.model.getFragmentList()).getMaterial(fragId);
+            let material = (<any>model.getFragmentList()).getMaterial(fragId);
             material.color = color;
             material.needsUpdate = true;
         }
@@ -471,7 +471,7 @@ export class ForgeContext {
                     const frags = this.dbsToFrags([itemId]);
 
                     for (const fragId of frags) {
-                        let originalMaterial = (<any>this.viewer.model.getFragmentList()).getMaterial(fragId);
+                        let originalMaterial = (<any>model.getFragmentList()).getMaterial(fragId);
                         if (originalMaterial) {
                             if (!(fragId in this.originalMaterials)) {
                                 this.originalMaterials[fragId] = originalMaterial;
