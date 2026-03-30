@@ -215,12 +215,15 @@ export class ForgeContext {
         const unblock = () => { this._element.style.pointerEvents = ''; };
         this._element.addEventListener('pointerdown', unblock, { once: true, capture: true });
 
+        // Only restore the viewport (camera). The saved state JSON
+        // includes objectSet/visibility from when it was captured —
+        // restoring that would overwrite current visibility with stale
+        // data. Merge our target viewport into the current live state.
+        const liveState = this.viewer.getState();
+        liveState.viewport = viewerState.viewport;
+
         try {
-            // Only restore the viewport (camera), not the full state.
-            // The saved camera state JSON includes objectSet/visibility
-            // from when it was captured — restoring that would overwrite
-            // the current visibility with stale data.
-            await this.restoreState(viewerState, { cameraOnly: true });
+            await this.restoreState(liveState);
         } finally {
             unblock();
             this._element.removeEventListener('pointerdown', unblock, { capture: true });
@@ -230,7 +233,7 @@ export class ForgeContext {
 
     private restoreState(
         targetState: ViewerState,
-        options?: { preserveCamera?: boolean; cameraOnly?: boolean },
+        options?: { preserveCamera?: boolean },
     ): Promise<void> {
         // https://forge.autodesk.com/blog/wait-restorestate-finish
         return new Promise<void>((resolve) => {
@@ -249,12 +252,7 @@ export class ForgeContext {
                 listener
             );
 
-            let filter: any;
-            if (options?.preserveCamera) {
-                filter = { viewport: false };
-            } else if (options?.cameraOnly) {
-                filter = { objectSet: false, renderOptions: false, cutplanes: false };
-            }
+            const filter = options?.preserveCamera ? { viewport: false } : undefined;
             this.viewer.restoreState(targetState, filter, false);
         });
     }
