@@ -226,18 +226,20 @@ export class ForgeContext {
             const t0 = performance.now();
 
             const finish = () => {
+                if (cancelled) return;
                 cancelled = true;
                 cancelAnimationFrame(rafId);
-                this._element.removeEventListener('mousedown', onInteract);
-                this._element.removeEventListener('touchstart', onInteract);
+                this._element.removeEventListener('pointerdown', onInteract);
+                this._element.removeEventListener('wheel', onInteract);
                 this._cancelCameraAnimation = null;
                 resolve();
             };
 
             const onInteract = () => { finish(); };
 
-            this._element.addEventListener('mousedown', onInteract);
-            this._element.addEventListener('touchstart', onInteract);
+            // pointerdown covers mouse, touch, and pen input
+            this._element.addEventListener('pointerdown', onInteract);
+            this._element.addEventListener('wheel', onInteract);
 
             this._cancelCameraAnimation = finish;
 
