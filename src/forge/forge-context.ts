@@ -405,6 +405,21 @@ export class ForgeContext {
     private async toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
         if (!this.viewer) { return; }
 
+        // Wait for the object tree to be mapped if it hasn't been yet.
+        // loadModel resolves before onObjectTreeCreated fires, so
+        // dbIdsByName may not be populated on first call.
+        if (!this.dbIdsByName[model.id]) {
+            await new Promise<void>((resolve) => {
+                const check = (e: any) => {
+                    if (e.model.id === model.id) {
+                        this.viewer.removeEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, check);
+                        resolve();
+                    }
+                };
+                this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, check);
+            });
+        }
+
         const state = this.viewer.getState();
         for (const objSet of state.objectSet) {
             objSet.hidden = [];
