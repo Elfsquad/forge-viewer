@@ -18,6 +18,7 @@ export class ForgeContext {
     public loaded3dModels: { [configurationId: string]: Autodesk.Viewing.Model } = {};
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
+    private _cancelCameraAnimation: (() => void) | null = null;
     private onLoadStart: ((event: Layout3d) => void) | null;
 
     constructor() { }
@@ -185,8 +186,90 @@ export class ForgeContext {
             }
         }
         viewerState.renderOptions.appearance.progressiveDisplay = false;
-        await this.restoreState(viewerState);
+
+        // Animate the camera using our own lerp loop instead of
+        // restoreState. restoreState's internal animation conflicts
+        // with user orbit — if the user drags during the transition
+        // both fight over the camera, causing a fly-off. Our loop
+        // cancels instantly on user interaction so the orbit tool
+        // takes over cleanly from wherever the camera is.
+        await this.animateCamera(viewerState.viewport);
         this.setPivotPoint();
+    }
+
+    private static CAMERA_ANIM_MS = 600;
+
+    private animateCamera(target: import("./viewerState").Viewport): Promise<void> {
+        // Cancel any in-flight animation
+        this._cancelCameraAnimation?.();
+
+        const nav = this.viewer.navigation;
+        const cam = nav.getCamera();
+
+        // Snapshot the starting pose
+        const startEye = cam.position.clone();
+        const startTarget = (cam as any).target.clone();
+        const startUp = cam.up.clone();
+
+        const endEye = new THREE.Vector3(target.eye[0], target.eye[1], target.eye[2]);
+        const endTarget = new THREE.Vector3(target.target[0], target.target[1], target.target[2]);
+        const endUp = new THREE.Vector3(target.up[0], target.up[1], target.up[2]);
+
+        // If positions are (nearly) identical, apply immediately
+        if (startEye.distanceTo(endEye) < 0.01 && startTarget.distanceTo(endTarget) < 0.01) {
+            cam.up.copy(endUp);
+            nav.setPosition(endEye);
+            nav.setTarget(endTarget);
+            this.setPivotPoint();
+            return Promise.resolve();
+        }
+
+        return new Promise<void>((resolve) => {
+            let cancelled = false;
+            let rafId: number;
+            const t0 = performance.now();
+
+            const finish = () => {
+                cancelled = true;
+                cancelAnimationFrame(rafId);
+                this._element.removeEventListener('mousedown', onInteract);
+                this._element.removeEventListener('touchstart', onInteract);
+                this._cancelCameraAnimation = null;
+                this.setPivotPoint();
+                resolve();
+            };
+
+            const onInteract = () => { finish(); };
+
+            this._element.addEventListener('mousedown', onInteract, { once: true });
+            this._element.addEventListener('touchstart', onInteract, { once: true });
+
+            this._cancelCameraAnimation = finish;
+
+            const tick = (now: number) => {
+                if (cancelled) return;
+                const elapsed = now - t0;
+                // Ease-out quadratic
+                const raw = Math.min(elapsed / ForgeContext.CAMERA_ANIM_MS, 1);
+                const t = 1 - (1 - raw) * (1 - raw);
+
+                const eye = new THREE.Vector3().lerpVectors(startEye, endEye, t);
+                const tgt = new THREE.Vector3().lerpVectors(startTarget, endTarget, t);
+                const up = new THREE.Vector3().lerpVectors(startUp, endUp, t).normalize();
+
+                cam.up.copy(up);
+                nav.setPosition(eye);
+                nav.setTarget(tgt);
+
+                if (raw < 1) {
+                    rafId = requestAnimationFrame(tick);
+                } else {
+                    finish();
+                }
+            };
+
+            rafId = requestAnimationFrame(tick);
+        });
     }
 
     private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
