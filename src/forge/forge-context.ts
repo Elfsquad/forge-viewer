@@ -3,7 +3,7 @@ import { FootprintManager } from "./footprintManager";
 import { Label3DManager as LabelManager } from "./labelmanager";
 import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
-import { ViewerState } from "./viewerState";
+import { ViewerState, Viewport } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 
 export class ForgeContext {
@@ -199,14 +199,12 @@ export class ForgeContext {
 
     private static CAMERA_ANIM_MS = 600;
 
-    private animateCamera(target: import("./viewerState").Viewport): Promise<void> {
-        // Cancel any in-flight animation
+    private animateCamera(target: Viewport): Promise<void> {
         this._cancelCameraAnimation?.();
 
         const nav = this.viewer.navigation;
         const cam = nav.getCamera();
 
-        // Snapshot the starting pose
         const startEye = cam.position.clone();
         const startTarget = (cam as any).target.clone();
         const startUp = cam.up.clone();
@@ -215,12 +213,10 @@ export class ForgeContext {
         const endTarget = new THREE.Vector3(target.target[0], target.target[1], target.target[2]);
         const endUp = new THREE.Vector3(target.up[0], target.up[1], target.up[2]);
 
-        // If positions are (nearly) identical, apply immediately
         if (startEye.distanceTo(endEye) < 0.01 && startTarget.distanceTo(endTarget) < 0.01) {
             cam.up.copy(endUp);
             nav.setPosition(endEye);
             nav.setTarget(endTarget);
-            this.setPivotPoint();
             return Promise.resolve();
         }
 
@@ -235,27 +231,29 @@ export class ForgeContext {
                 this._element.removeEventListener('mousedown', onInteract);
                 this._element.removeEventListener('touchstart', onInteract);
                 this._cancelCameraAnimation = null;
-                this.setPivotPoint();
                 resolve();
             };
 
             const onInteract = () => { finish(); };
 
-            this._element.addEventListener('mousedown', onInteract, { once: true });
-            this._element.addEventListener('touchstart', onInteract, { once: true });
+            this._element.addEventListener('mousedown', onInteract);
+            this._element.addEventListener('touchstart', onInteract);
 
             this._cancelCameraAnimation = finish;
+
+            const eye = new THREE.Vector3();
+            const tgt = new THREE.Vector3();
+            const up = new THREE.Vector3();
 
             const tick = (now: number) => {
                 if (cancelled) return;
                 const elapsed = now - t0;
-                // Ease-out quadratic
                 const raw = Math.min(elapsed / ForgeContext.CAMERA_ANIM_MS, 1);
                 const t = 1 - (1 - raw) * (1 - raw);
 
-                const eye = new THREE.Vector3().lerpVectors(startEye, endEye, t);
-                const tgt = new THREE.Vector3().lerpVectors(startTarget, endTarget, t);
-                const up = new THREE.Vector3().lerpVectors(startUp, endUp, t).normalize();
+                eye.lerpVectors(startEye, endEye, t);
+                tgt.lerpVectors(startTarget, endTarget, t);
+                up.lerpVectors(startUp, endUp, t).normalize();
 
                 cam.up.copy(up);
                 nav.setPosition(eye);
