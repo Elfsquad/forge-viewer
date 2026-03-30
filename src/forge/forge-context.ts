@@ -213,13 +213,6 @@ export class ForgeContext {
         const endTarget = new THREE.Vector3(target.target[0], target.target[1], target.target[2]);
         const endUp = new THREE.Vector3(target.up[0], target.up[1], target.up[2]);
 
-        if (startEye.distanceTo(endEye) < 0.01 && startTarget.distanceTo(endTarget) < 0.01) {
-            cam.up.copy(endUp);
-            nav.setPosition(endEye);
-            nav.setTarget(endTarget);
-            return Promise.resolve();
-        }
-
         return new Promise<void>((resolve) => {
             let cancelled = false;
             let rafId: number;
@@ -272,34 +265,6 @@ export class ForgeContext {
         });
     }
 
-    private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
-        // https://forge.autodesk.com/blog/wait-restorestate-finish
-        var promise = new Promise<void>((resolve, _) => {
-            var listener = (event: any) => {
-                if (event.value.finalFrame) {
-                    this.viewer.removeEventListener(
-                        Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
-                        listener
-                    );
-                    resolve();
-                }
-            }
-
-            // Wait for last render caused by camera changes
-            this.viewer.addEventListener(
-                Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
-                listener
-            );
-
-            // When preserveCamera is true, exclude viewport from restore to avoid
-            // overriding active camera transitions with intermediate states
-            const filter = options?.preserveCamera ? { viewport: false } : undefined;
-            this.viewer.restoreState(targetState, filter, false);
-        });
-
-
-        return promise;
-    }
 
     private _loadModelPromises: { [configurationId: string]: { resolve: any, reject: Function } } = {};
     private _loadModelSpinners: { [configurationId: string]: THREE.Object3D } = {};
@@ -445,9 +410,14 @@ export class ForgeContext {
             objSet.hidden = [];
         }
 
-        // Preserve camera to avoid overriding active camera transitions
-        // with intermediate states captured during animation
-        await this.restoreState(state, { preserveCamera: true });
+        // Apply immediately (not animated) to avoid a race with
+        // animateCamera: an animated restoreState listens for
+        // FINAL_FRAME_RENDERED_CHANGED_EVENT which our camera animation
+        // can trigger, causing restoreState to resolve before the
+        // visibility reset completes — then its delayed completion
+        // overwrites the new visibility state we set next.
+        const filter = { viewport: false };
+        this.viewer.restoreState(state, filter, true);
 
         let mapped3dItems = linked3dModel.mapped3dItems;
 
