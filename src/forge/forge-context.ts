@@ -136,6 +136,11 @@ export class ForgeContext {
                 return;
             }
 
+            // Cancel any in-flight camera animation so its per-frame
+            // renders don't trigger FINAL_FRAME_RENDERED_CHANGED_EVENT
+            // and prematurely resolve the restoreState in toggleInViewer.
+            this._cancelCameraAnimation?.();
+
             for (let configurationId of Object.keys(this.loaded3dModels)) {
                 if (!layout3d.some(l => l.configurationId == configurationId)) {
                     this.viewer.hideModel(this.loaded3dModels[configurationId].id);
@@ -265,6 +270,29 @@ export class ForgeContext {
         });
     }
 
+
+    private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
+        // https://forge.autodesk.com/blog/wait-restorestate-finish
+        return new Promise<void>((resolve) => {
+            const listener = (event: any) => {
+                if (event.value.finalFrame) {
+                    this.viewer.removeEventListener(
+                        Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
+                        listener
+                    );
+                    resolve();
+                }
+            };
+
+            this.viewer.addEventListener(
+                Autodesk.Viewing.FINAL_FRAME_RENDERED_CHANGED_EVENT,
+                listener
+            );
+
+            const filter = options?.preserveCamera ? { viewport: false } : undefined;
+            this.viewer.restoreState(targetState, filter, false);
+        });
+    }
 
     private _loadModelPromises: { [configurationId: string]: { resolve: any, reject: Function } } = {};
     private _loadModelSpinners: { [configurationId: string]: THREE.Object3D } = {};
@@ -405,40 +433,20 @@ export class ForgeContext {
     private async toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
         if (!this.viewer) { return; }
 
-        // Wait for the object tree to be mapped if it hasn't been yet.
-        // loadModel resolves before onObjectTreeCreated fires, so
-        // dbIdsByName may not be populated on first call.
-        if (!this.dbIdsByName[model.id]) {
-            await new Promise<void>((resolve) => {
-                const check = (e: any) => {
-                    if (e.model.id === model.id) {
-                        this.viewer.removeEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, check);
-                        resolve();
-                    }
-                };
-                this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, check);
-            });
-        }
-
         const state = this.viewer.getState();
         for (const objSet of state.objectSet) {
             objSet.hidden = [];
         }
 
-        // Apply immediately (not animated) to avoid a race with
-        // animateCamera: an animated restoreState listens for
-        // FINAL_FRAME_RENDERED_CHANGED_EVENT which our camera animation
-        // can trigger, causing restoreState to resolve before the
-        // visibility reset completes — then its delayed completion
-        // overwrites the new visibility state we set next.
-        const filter = { viewport: false };
-        this.viewer.restoreState(state, filter, true);
+        // Preserve camera to avoid overriding active camera transitions
+        // with intermediate states captured during animation
+        await this.restoreState(state, { preserveCamera: true });
 
         let mapped3dItems = linked3dModel.mapped3dItems;
 
         this.moveModel(model, linked3dModel);
 
-        let instanceTree = model.getData().instanceTree;
+        let instanceTree = this.viewer.model.getData().instanceTree;
 
         for (let visibleItem of mapped3dItems.visibleItems) {
             let itemIds = this.dbIdsByName[model.id][visibleItem.toLowerCase()];
@@ -469,7 +477,7 @@ export class ForgeContext {
         }
         for (let fragId in this.originalColors) {
             let color = this.originalColors[fragId];
-            let material = (<any>model.getFragmentList()).getMaterial(fragId);
+            let material = (<any>this.viewer.model.getFragmentList()).getMaterial(fragId);
             material.color = color;
             material.needsUpdate = true;
         }
@@ -486,7 +494,7 @@ export class ForgeContext {
                     const frags = this.dbsToFrags([itemId]);
 
                     for (const fragId of frags) {
-                        let originalMaterial = (<any>model.getFragmentList()).getMaterial(fragId);
+                        let originalMaterial = (<any>this.viewer.model.getFragmentList()).getMaterial(fragId);
                         if (originalMaterial) {
                             if (!(fragId in this.originalMaterials)) {
                                 this.originalMaterials[fragId] = originalMaterial;
