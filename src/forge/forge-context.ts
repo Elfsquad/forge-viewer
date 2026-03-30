@@ -216,7 +216,11 @@ export class ForgeContext {
         this._element.addEventListener('pointerdown', unblock, { once: true, capture: true });
 
         try {
-            await this.restoreState(viewerState);
+            // Only restore the viewport (camera), not the full state.
+            // The saved camera state JSON includes objectSet/visibility
+            // from when it was captured — restoring that would overwrite
+            // the current visibility with stale data.
+            await this.restoreState(viewerState, { cameraOnly: true });
         } finally {
             unblock();
             this._element.removeEventListener('pointerdown', unblock, { capture: true });
@@ -224,7 +228,10 @@ export class ForgeContext {
         this.setPivotPoint();
     }
 
-    private restoreState(targetState: ViewerState, options?: { preserveCamera?: boolean }): Promise<void> {
+    private restoreState(
+        targetState: ViewerState,
+        options?: { preserveCamera?: boolean; cameraOnly?: boolean },
+    ): Promise<void> {
         // https://forge.autodesk.com/blog/wait-restorestate-finish
         return new Promise<void>((resolve) => {
             const listener = (event: any) => {
@@ -242,7 +249,12 @@ export class ForgeContext {
                 listener
             );
 
-            const filter = options?.preserveCamera ? { viewport: false } : undefined;
+            let filter: any;
+            if (options?.preserveCamera) {
+                filter = { viewport: false };
+            } else if (options?.cameraOnly) {
+                filter = { objectSet: false, renderOptions: false, cutplanes: false };
+            }
             this.viewer.restoreState(targetState, filter, false);
         });
     }
