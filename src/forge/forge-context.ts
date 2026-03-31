@@ -26,8 +26,7 @@ export class ForgeContext {
         element: HTMLElement,
         onProgess: ((event: ViewerProgressEvent) => void) | null = null,
         onLoadStart: ((event: Layout3d) => void) | null = null,
-        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null,
-        useStreaming: boolean = false
+        onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
     ): Promise<void> {
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
@@ -35,7 +34,7 @@ export class ForgeContext {
 
         this._element = element;
         await this.initializeViewerToken();
-        await this.initializeViewer(this._element, onProgess, onLoadEnd, useStreaming);
+        await this.initializeViewer(this._element, onProgess, onLoadEnd);
         this.intializeNameLabelsManager();
         this.initializeLabelManager();
         this.initializeFootprintManager();
@@ -51,13 +50,11 @@ export class ForgeContext {
         this._token = await response.text();
     }
 
-    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null, useStreaming : boolean = false): Promise<void> {
-        (<any>window).USE_OPFS = true; //https://aps.autodesk.com/blog/viewer-performance-update-part-2-3-opfs-caching
+    private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null): Promise<void> {
         let promise = new Promise<void>((resolve, _) => {
 
             Autodesk.Viewing.Initializer({
-                env: 'AutodeskProduction2',
-                api: useStreaming ? 'streamingV2_EU' : 'derivativeV2',
+                env: 'AutodeskProduction',
                 accessToken: this._token as string
             }, () => {
                 this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
@@ -235,30 +232,25 @@ export class ForgeContext {
                 `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
                     if (this.viewer == null) return;
-            
+
                     this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
-                    const root = viewerDocument.getRoot();
-            
-                    this.viewer.loadModel(viewerDocument.getViewablePath(root.getDefaultGeometry()), {
+                    const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
+                    this.viewer.loadModel(viewerDocument.getViewablePath(defaultModel), {
                         applyScaling: 'mm',
-                        loadAsHidden: true,
-                        acmSessionId: viewerDocument.acmSessionId
+                        loadAsHidden: true
                     },
-                    (model) => {
-                        this.loaded3dModels[layout3d.configurationId] = model;
-                        this.moveModel(model, layout3d);
-                        resolve(model);
-                    });
-            
+                        (model) => {
+                            this.loaded3dModels[layout3d.configurationId] = model;
+                            this.moveModel(model, layout3d);
+                        });
+
                 },
                 (err) => {
                     console.error('document load error', err)
                     reject(err);
-                }
-            );
-            
+                });
         });
 
         return promise;
