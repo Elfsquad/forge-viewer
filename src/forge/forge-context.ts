@@ -209,6 +209,10 @@ export class ForgeContext {
             // overriding active camera transitions with intermediate states
             const filter = options?.preserveCamera ? { viewport: false } : undefined;
             this.viewer.restoreState(targetState, filter, false);
+
+            // Kick the render loop; without this the FINAL_FRAME_RENDERED_CHANGED_EVENT
+            // never fires when the viewer is idle (demand-rendering mode).
+            requestAnimationFrame(() => this.viewer.impl.invalidate(true));
         });
 
 
