@@ -83,6 +83,14 @@ export class ElfsquadForgeViewer extends HTMLElement {
         await this.update(layout3d);
     }
 
+    /**
+     * Release resources this viewer registered globally. Call it when discarding the
+     * element so `printGpuMetrics` stops reporting on a viewer that no longer exists.
+     */
+    public dispose(): void {
+        this._forgeContext?.dispose();
+    }
+
     /*
      * Apply layout settings to the viewer.
      */

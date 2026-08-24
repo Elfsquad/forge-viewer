@@ -5,6 +5,12 @@ import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
+import {
+    registerDevConsoleCommands,
+    registerGpuMetricsSource,
+    suppressGeometryStats,
+    withRendererLogsSuppressed,
+} from "./viewerLogging";
 
 export class ForgeContext {
     public _element: HTMLElement;
@@ -19,6 +25,7 @@ export class ForgeContext {
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
     private onLoadStart: ((event: Layout3d) => void) | null;
+    private deregisterGpuMetrics: (() => void) | null = null;
 
     constructor() { }
 
@@ -31,6 +38,16 @@ export class ForgeContext {
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
+
+        // Before anything Autodesk runs: the viewer logs a per-load geometry dump we replace
+        // with the on-demand `elfsquadForgeViewer.printGpuMetrics()` command.
+        suppressGeometryStats();
+        registerDevConsoleCommands();
+
+        if (this.deregisterGpuMetrics) this.deregisterGpuMetrics();
+        this.deregisterGpuMetrics = registerGpuMetricsSource(
+            () => Object.keys(this.loaded3dModels).map(id => this.loaded3dModels[id])
+        );
 
         this._element = element;
         await this.initializeViewerToken();
@@ -45,6 +62,18 @@ export class ForgeContext {
         this.viewer.fitToView();
     }
 
+    /**
+     * Release what this context registered globally. There is no teardown path in the
+     * component yet, so a host that discards a context should call this itself to stop
+     * `printGpuMetrics` reporting on a viewer that is gone.
+     */
+    public dispose(): void {
+        if (this.deregisterGpuMetrics) {
+            this.deregisterGpuMetrics();
+            this.deregisterGpuMetrics = null;
+        }
+    }
+
     private async initializeViewerToken(): Promise<void> {
         const response = await fetch(`https://api.elfsquad.io/api/2.0/configurations/autodesktoken`);
         this._token = await response.text();
@@ -57,9 +86,13 @@ export class ForgeContext {
                 env: 'AutodeskProduction',
                 accessToken: this._token as string
             }, () => {
-                this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
-                if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
-                this.viewer.initialize();
+                // The renderer/vendor strings are logged while the WebGL context is created,
+                // which happens inside these two calls and nowhere else.
+                withRendererLogsSuppressed(() => {
+                    this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
+                    if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
+                    this.viewer.initialize();
+                });
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);
