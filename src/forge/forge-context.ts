@@ -6,8 +6,9 @@ import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 import {
+    GpuMetrics,
+    readGpuMetrics,
     registerDevConsoleCommands,
-    registerGpuMetricsSource,
     suppressGeometryStats,
     withRendererLogsSuppressed,
 } from "./viewerLogging";
@@ -25,7 +26,6 @@ export class ForgeContext {
     public linked3dSettings: { [configurationId: string]: Layout3d } = {};
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
     private onLoadStart: ((event: Layout3d) => void) | null;
-    private deregisterGpuMetrics: (() => void) | null = null;
 
     constructor() { }
 
@@ -39,15 +39,7 @@ export class ForgeContext {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
 
-        // Before anything Autodesk runs: the viewer logs a per-load geometry dump we replace
-        // with the on-demand `elfsquadForgeViewer.printGpuMetrics()` command.
-        suppressGeometryStats();
         registerDevConsoleCommands();
-
-        if (this.deregisterGpuMetrics) this.deregisterGpuMetrics();
-        this.deregisterGpuMetrics = registerGpuMetricsSource(
-            () => Object.keys(this.loaded3dModels).map(id => this.loaded3dModels[id])
-        );
 
         this._element = element;
         await this.initializeViewerToken();
@@ -63,15 +55,16 @@ export class ForgeContext {
     }
 
     /**
-     * Release what this context registered globally. There is no teardown path in the
-     * component yet, so a host that discards a context should call this itself to stop
-     * `printGpuMetrics` reporting on a viewer that is gone.
+     * The GPU counters for every model this context currently has loaded. Read on demand
+     * by `printGpuMetrics`, which reaches this through the viewer element.
      */
-    public dispose(): void {
-        if (this.deregisterGpuMetrics) {
-            this.deregisterGpuMetrics();
-            this.deregisterGpuMetrics = null;
+    public collectGpuMetrics(): GpuMetrics[] {
+        const metrics: GpuMetrics[] = [];
+        for (const configurationId of Object.keys(this.loaded3dModels)) {
+            const modelMetrics = readGpuMetrics(configurationId, this.loaded3dModels[configurationId]);
+            if (modelMetrics) metrics.push(modelMetrics);
         }
+        return metrics;
     }
 
     private async initializeViewerToken(): Promise<void> {
@@ -86,6 +79,11 @@ export class ForgeContext {
                 env: 'AutodeskProduction',
                 accessToken: this._token as string
             }, () => {
+                // The initializer has run, so the viewer's internals are there to patch: the
+                // per-load geometry dump is replaced by the on-demand
+                // `elfsquadForgeViewer.printGpuMetrics()` command.
+                suppressGeometryStats({ warnIfUnavailable: true });
+
                 // The renderer/vendor strings are logged while the WebGL context is created,
                 // which happens inside these two calls and nowhere else.
                 withRendererLogsSuppressed(() => {

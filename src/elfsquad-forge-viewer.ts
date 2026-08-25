@@ -4,6 +4,7 @@ import styles from './elfsquad-forge-viewer.css';
 import { ElfsquadConfigurationOverview } from "./overview-element";
 import { ViewerProgressEvent } from "./forge/models/progressEvent";
 import { GeometryLoadedEvent } from "./forge/models/geometryLoadedEvent";
+import { GpuMetrics } from "./forge/viewerLogging";
 
 
 export class ElfsquadForgeViewer extends HTMLElement {
@@ -84,11 +85,14 @@ export class ElfsquadForgeViewer extends HTMLElement {
     }
 
     /**
-     * Release resources this viewer registered globally. Call it when discarding the
-     * element so `printGpuMetrics` stops reporting on a viewer that no longer exists.
+     * The GPU counters for the models this viewer currently has loaded.
+     *
+     * `printGpuMetrics()` finds viewers by tag name in the document and calls this on
+     * each, which is why it is public: it is the seam between the console command and a
+     * live viewer, not something a host needs to call.
      */
-    public dispose(): void {
-        this._forgeContext?.dispose();
+    public collectGpuMetrics(): GpuMetrics[] {
+        return this._forgeContext ? this._forgeContext.collectGpuMetrics() : [];
     }
 
     /*

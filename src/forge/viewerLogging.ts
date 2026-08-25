@@ -17,12 +17,23 @@
 /** Extension the viewer reads solely to log the renderer/vendor strings. */
 const DEBUG_RENDERER_INFO = 'WEBGL_debug_renderer_info';
 
+/** The tag every viewer element is registered under; see `index.ts`. */
+const VIEWER_TAG = 'elfsquad-forge-viewer';
+
+/** Property the developer-console commands are installed under on `window`. */
+const GLOBAL_NAME = 'elfsquadForgeViewer';
+
 let verbose = false;
 let geometryStatsPatched = false;
+let geometryStatsWarned = false;
 let originalPrintStats: (() => void) | null = null;
+let commandsInstalled = false;
+let commandsCollisionWarned = false;
 
-/** The four counters the viewer's own `GeometryList.printStats` prints. */
+/** The four counters the viewer's own `GeometryList.printStats` prints, per loaded model. */
 export interface GpuMetrics {
+    /** The configuration this model was loaded for, so rows can be told apart. */
+    configurationId: string;
     /** Bytes of geometry held for this model. */
     geometryMemory: number;
     /** Meshes in the geometry list. */
@@ -33,10 +44,14 @@ export interface GpuMetrics {
     gpuMeshMemory: number;
 }
 
-/** Supplies the models a viewer instance currently has loaded. */
-type MetricsSource = () => Autodesk.Viewing.Model[];
-
-const metricsSources = new Set<MetricsSource>();
+/**
+ * What `printGpuMetrics` calls on a viewer element it finds in the document.
+ * `ElfsquadForgeViewer` implements it; the lookup is structural so this module does not
+ * have to import the element and close the import cycle.
+ */
+interface GpuMetricsProvider {
+    collectGpuMetrics(): GpuMetrics[];
+}
 
 /**
  * Turn the viewer's own console output back on or off. Off by default: the viewer logs
@@ -58,20 +73,35 @@ export function isVerboseLogging(): boolean {
 /**
  * Replace `GeometryList.printStats` with a no-op unless verbose logging is on. The real
  * method is four `console.log` calls over four fields and has no other effect, so
- * standing in for it costs the viewer nothing. Idempotent, and safe to call before the
- * Autodesk bundle has evaluated — it simply does nothing in that case.
+ * standing in for it costs the viewer nothing.
+ *
+ * Idempotent, and safe to call before the Autodesk bundle has evaluated — it simply does
+ * nothing in that case. Pass `warnIfUnavailable` from a call site where the bundle is
+ * known to be initialized: the viewer floats at `7.*`, so a moved or renamed internal
+ * should surface as one warning rather than as silently returning noise.
  */
-export function suppressGeometryStats(): void {
+export function suppressGeometryStats(options: { warnIfUnavailable?: boolean } = {}): void {
     if (geometryStatsPatched) return;
 
     const geometryList = getPrivate('GeometryList');
-    if (!geometryList || !geometryList.prototype) return;
+    const original = geometryList && geometryList.prototype
+        ? geometryList.prototype.printStats as (() => void) | undefined
+        : undefined;
 
-    const original = geometryList.prototype.printStats as (() => void) | undefined;
-    if (typeof original !== 'function') return;
+    if (typeof original !== 'function') {
+        if (options.warnIfUnavailable && !geometryStatsWarned) {
+            geometryStatsWarned = true;
+            console.warn(
+                `[@elfsquad/forge-viewer] Autodesk.Viewing.Private.GeometryList.printStats was not found, ` +
+                `so the viewer's per-load geometry counters cannot be silenced. The viewer version has ` +
+                `probably moved on; see src/forge/viewerLogging.ts.`
+            );
+        }
+        return;
+    }
 
     originalPrintStats = original;
-    geometryList.prototype.printStats = function (this: unknown): void {
+    geometryList!.prototype.printStats = function (this: unknown): void {
         if (verbose) originalPrintStats!.call(this);
     };
     geometryStatsPatched = true;
@@ -115,32 +145,25 @@ export function withRendererLogsSuppressed<T>(construct: () => T): T {
 }
 
 /**
- * Register a viewer instance's loaded models so `printGpuMetrics` can report on them.
- * Returns the function that deregisters it again.
- */
-export function registerGpuMetricsSource(source: MetricsSource): () => void {
-    metricsSources.add(source);
-    return () => {
-        metricsSources.delete(source);
-    };
-}
-
-/**
- * Report the GPU geometry counters for every model currently loaded, across all live
- * viewers. This is the on-demand replacement for the viewer's per-load dump: same
+ * Report the GPU geometry counters for every model currently loaded, across every viewer
+ * on the page. This is the on-demand replacement for the viewer's per-load dump: same
  * numbers, read when someone actually wants them.
+ *
+ * Viewers are found by tag name in the document at call time, so nothing here outlives
+ * the elements themselves — a discarded viewer stops being reported the moment it leaves
+ * the DOM, and no host has to remember to deregister it. The trade is that a viewer
+ * nested inside another component's shadow root is out of reach.
  *
  * Reachable from the developer console as `elfsquadForgeViewer.printGpuMetrics()`.
  */
 export function printGpuMetrics(): GpuMetrics[] {
     const collected: GpuMetrics[] = [];
 
-    for (const source of metricsSources) {
-        for (const model of source()) {
-            const metrics = readGpuMetrics(model);
-            if (metrics) collected.push(metrics);
-        }
-    }
+    document.querySelectorAll(VIEWER_TAG).forEach((element) => {
+        const provider = element as unknown as Partial<GpuMetricsProvider>;
+        if (typeof provider.collectGpuMetrics !== 'function') return;
+        for (const metrics of provider.collectGpuMetrics()) collected.push(metrics);
+    });
 
     if (collected.length === 0) {
         console.log('No 3D model is currently loaded, so there are no GPU metrics to report.');
@@ -151,6 +174,7 @@ export function printGpuMetrics(): GpuMetrics[] {
     // stays useful when several models are loaded at once.
     console.table(
         collected.map((metrics) => ({
+            Configuration: metrics.configurationId,
             'Geometry size (MB)': metrics.geometryMemory / 1048576,
             Meshes: metrics.meshCount,
             'Meshes on GPU': metrics.meshCountOnGpu,
@@ -162,7 +186,7 @@ export function printGpuMetrics(): GpuMetrics[] {
 }
 
 /** Read the counters the viewer keeps on a model's geometry list. */
-function readGpuMetrics(model: Autodesk.Viewing.Model): GpuMetrics | null {
+export function readGpuMetrics(configurationId: string, model: Autodesk.Viewing.Model): GpuMetrics | null {
     const geometryList = model.getGeometryList() as unknown as {
         geomMemory?: number;
         geoms?: unknown[];
@@ -172,9 +196,11 @@ function readGpuMetrics(model: Autodesk.Viewing.Model): GpuMetrics | null {
     if (!geometryList) return null;
 
     return {
+        configurationId,
         geometryMemory: geometryList.geomMemory || 0,
         // The viewer's own printStats subtracts one: index 0 of `geoms` is a placeholder.
-        meshCount: geometryList.geoms ? geometryList.geoms.length - 1 : 0,
+        // Clamped, because the array is briefly empty while a model is still loading.
+        meshCount: geometryList.geoms ? Math.max(0, geometryList.geoms.length - 1) : 0,
         meshCountOnGpu: geometryList.gpuNumMeshes || 0,
         gpuMeshMemory: geometryList.gpuMeshMemory || 0,
     };
@@ -185,14 +211,30 @@ function readGpuMetrics(model: Autodesk.Viewing.Model): GpuMetrics | null {
  * of a deployed build, where there is no other way in.
  */
 export function registerDevConsoleCommands(): void {
-    const target = globalThis as unknown as Record<string, unknown>;
-    if (target.elfsquadForgeViewer) return;
+    if (commandsInstalled) return;
 
-    target.elfsquadForgeViewer = {
+    const target = globalThis as unknown as Record<string, unknown>;
+
+    // A second copy of the bundle, a host global, or the DOM's named access for
+    // `<elfsquad-forge-viewer id="elfsquadForgeViewer">` all land on this name. Say so
+    // once, rather than leaving the documented command silently absent.
+    if (GLOBAL_NAME in target) {
+        if (!commandsCollisionWarned) {
+            commandsCollisionWarned = true;
+            console.warn(
+                `[@elfsquad/forge-viewer] window.${GLOBAL_NAME} is already taken, so the viewer's log ` +
+                `commands were not installed. Import setVerboseLogging/printGpuMetrics from the package instead.`
+            );
+        }
+        return;
+    }
+
+    target[GLOBAL_NAME] = {
         printGpuMetrics,
         setVerboseLogging,
         isVerboseLogging,
     };
+    commandsInstalled = true;
 }
 
 /** Reach into the viewer's undeclared internals, which `@types/forge-viewer` does not cover. */
