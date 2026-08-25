@@ -5,6 +5,13 @@ import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
 import { ViewerState } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
+import {
+    GpuMetrics,
+    readGpuMetrics,
+    registerDevConsoleCommands,
+    suppressGeometryStats,
+    withRendererLogsSuppressed,
+} from "./viewerLogging";
 
 export class ForgeContext {
     public _element: HTMLElement;
@@ -32,6 +39,8 @@ export class ForgeContext {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
 
+        registerDevConsoleCommands();
+
         this._element = element;
         await this.initializeViewerToken();
         await this.initializeViewer(this._element, onProgess, onLoadEnd);
@@ -43,6 +52,19 @@ export class ForgeContext {
 
     public focus(): void {
         this.viewer.fitToView();
+    }
+
+    /**
+     * The GPU counters for every model this context currently has loaded. Read on demand
+     * by `printGpuMetrics`, which reaches this through the viewer element.
+     */
+    public collectGpuMetrics(): GpuMetrics[] {
+        const metrics: GpuMetrics[] = [];
+        for (const configurationId of Object.keys(this.loaded3dModels)) {
+            const modelMetrics = readGpuMetrics(configurationId, this.loaded3dModels[configurationId]);
+            if (modelMetrics) metrics.push(modelMetrics);
+        }
+        return metrics;
     }
 
     private async initializeViewerToken(): Promise<void> {
@@ -57,9 +79,18 @@ export class ForgeContext {
                 env: 'AutodeskProduction',
                 accessToken: this._token as string
             }, () => {
-                this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
-                if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
-                this.viewer.initialize();
+                // The initializer has run, so the viewer's internals are there to patch: the
+                // per-load geometry dump is replaced by the on-demand
+                // `elfsquadForgeViewer.printGpuMetrics()` command.
+                suppressGeometryStats({ warnIfUnavailable: true });
+
+                // The renderer/vendor strings are logged while the WebGL context is created,
+                // which happens inside these two calls and nowhere else.
+                withRendererLogsSuppressed(() => {
+                    this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
+                    if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
+                    this.viewer.initialize();
+                });
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);
