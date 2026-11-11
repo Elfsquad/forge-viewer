@@ -45,8 +45,13 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._viewerContainerDiv.className = "forge-viewer-container";
         this.shadowRoot!.appendChild(this._viewerContainerDiv);
 
+        // The action row lives in this shadow root, so host CSS can only reach it through
+        // ::part(). Every button carries a per-control part name after the shared one,
+        // because the row's composition changes at runtime — `home` appears on the first
+        // setHome() call and is prepended — which makes positional selectors unusable.
         this._actionsDiv = document.createElement('div');
         this._actionsDiv.className = "forge-viewer-actions";
+        this._actionsDiv.setAttribute('part', 'actions');
         this._viewerContainerDiv!.appendChild(this._actionsDiv);
 
         this._overviewContainerDiv = document.createElement('div');
@@ -135,6 +140,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._footprintEnabled = true;
         this.footprintToggleButton = document.createElement('button');
         this.footprintToggleButton.innerHTML = require("./icons/bounding-box.svg") as string;
+        this.footprintToggleButton.setAttribute('part', 'action-button action-footprint');
         this.footprintToggleButton.onclick = () => this.toggleFootprint();
         this._actionsDiv!.appendChild(this.footprintToggleButton);
     }
@@ -144,6 +150,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._labelsEnabled = true;
         this.labelsToggleButton = document.createElement('button');
         this.labelsToggleButton.innerHTML = require("./icons/tag.svg") as string;
+        this.labelsToggleButton.setAttribute('part', 'action-button action-labels');
         this.labelsToggleButton.onclick = () => this.toggleLabels();
         this._actionsDiv!.appendChild(this.labelsToggleButton);
     }
@@ -185,6 +192,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
         if (!this._mainCameraPosition) {
             const cameraButton = document.createElement('button');
             cameraButton.innerHTML = require("./icons/home.svg") as string;
+            cameraButton.setAttribute('part', 'action-button action-home');
             cameraButton.onclick = () => this.home();
             this._actionsDiv!.insertBefore(cameraButton, this._actionsDiv!.firstChild);
         }
@@ -213,6 +221,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
     private intializeFocusAction() {
         const focusButton = document.createElement('button');
         focusButton.innerHTML = require("./icons/focus-centred.svg") as string;
+        focusButton.setAttribute('part', 'action-button action-focus-centred');
         focusButton.onclick = () => this._forgeContext?.focus();
         this._actionsDiv!.appendChild(focusButton);
     }
