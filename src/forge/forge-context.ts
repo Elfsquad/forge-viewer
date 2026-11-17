@@ -28,6 +28,8 @@ export class ForgeContext {
     private onLoadStart: ((event: Layout3d) => void) | null;
 
     private _disposed = false;
+    private _viewerStarted = false;
+    private _renderLoopStarted = false;
     private _tokenRequest: AbortController | null = null;
     private _frameRequest: number | null = null;
     private _viewerListeners: [string, (event: any) => void][] = [];
@@ -55,7 +57,7 @@ export class ForgeContext {
         this._element = element;
         await this.initializeViewerToken();
         if (this._disposed) return;
-        await this.initializeViewer(this._element, onProgess, onLoadEnd);
+        await this.untilDisposed(this.initializeViewer(this._element, onProgess, onLoadEnd));
         if (this._disposed) return;
         this.intializeNameLabelsManager();
         this.initializeLabelManager();
@@ -78,17 +80,22 @@ export class ForgeContext {
             this._frameRequest = null;
         }
 
-        if (this.viewer) {
-            for (const [type, listener] of this._viewerListeners) {
-                this.viewer.removeEventListener(type, listener);
+        try {
+            if (this.viewer) {
+                for (const [type, listener] of this._viewerListeners) {
+                    this.viewer.removeEventListener(type, listener);
+                }
+                // Per viewer, unlike Autodesk.Viewing.shutdown(), so a viewer created afterwards
+                // works. finish() throws on a viewer whose initialize() did not complete, and
+                // until its render loop has started the timeout queued in initializeViewer()
+                // finishes it instead.
+                if (this._viewerStarted && this._renderLoopStarted) this.viewer.finish();
             }
-            // Per viewer, unlike Autodesk.Viewing.shutdown(), so a viewer created afterwards works.
-            this.viewer.finish();
+        } finally {
+            this._viewerListeners = [];
+            for (const settle of this._settleOnDispose) settle();
+            this._settleOnDispose.clear();
         }
-        this._viewerListeners = [];
-
-        for (const settle of this._settleOnDispose) settle();
-        this._settleOnDispose.clear();
     }
 
     public addViewerListener(type: string, listener: (event: any) => void): void {
@@ -169,8 +176,17 @@ export class ForgeContext {
                 withRendererLogsSuppressed(() => {
                     this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
                     if (onProgess) this.addViewerListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
-                    this.viewer.initialize();
+                    // 0 means initialized; anything else is an error code (no WebGL, for one).
+                    this._viewerStarted = this.viewer.initialize() === 0;
                 });
+                // initialize() starts Autodesk's render loop from a 1 ms timeout, and a viewer
+                // finished before that fires is left ticking on a destroyed renderer for good.
+                // A timeout queued after theirs runs after it, so it marks the loop as started
+                // and finishes a viewer disposed in that window.
+                setTimeout(() => {
+                    this._renderLoopStarted = true;
+                    if (this._disposed && this._viewerStarted) this.viewer.finish();
+                }, 1);
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);

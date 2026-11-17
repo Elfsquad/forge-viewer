@@ -110,8 +110,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
         this._resizeObserver?.disconnect();
         this._resizeObserver = null;
 
-        this._forgeContext?.dispose();
+        const forgeContext = this._forgeContext;
         this._forgeContext = null;
+        forgeContext?.dispose();
     }
 
     /**
