@@ -8,10 +8,10 @@ export class NameLabelsManager {
     public onConfigurationSelected: ((configurationId: string) => void) | null = null;
 
     constructor(private forgeContext: ForgeContext) {
-        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
+        this.forgeContext.addViewerListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
             this.update();
         });
-        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+        this.forgeContext.addViewerListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
            this.update();
         });
     }
@@ -96,6 +96,7 @@ export class NameLabelsManager {
                 }
                 catch (error) {
                     setTimeout(() => {
+                        if (this.forgeContext.disposed) return;
                         this.hideNameLabels();
                         this.showNameLabels();
                     }, 250)

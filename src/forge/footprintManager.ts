@@ -10,13 +10,13 @@ export class FootprintManager {
 
     constructor(private forgeContext: ForgeContext, private parentElement: HTMLElement | null) {
 
-        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+        this.forgeContext.addViewerListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
             if (this.isFootprintEnabled() || this.forgeContext.nameLabelsManager.nameLabelsEnabled) {
                 const bbox = this.forgeContext.getModelBoundingBox();
                 this.updateLabelPositions(bbox[0], bbox[1]);
             }
         });
-        this.forgeContext.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
+        this.forgeContext.addViewerListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, () => {
             if (this.isFootprintEnabled()) {
                this.redraw();
             }

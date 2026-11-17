@@ -11,6 +11,10 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     private _forgeContext: ForgeContext | null = null;
     private initialized: boolean = false;
+    private _disposed: boolean = false;
+
+    private _attributeObserver: MutationObserver | null = null;
+    private _resizeObserver: ResizeObserver | null = null;
 
     private _viewerContainerDiv: HTMLDivElement;
     private _actionsDiv: HTMLDivElement | null = null;
@@ -33,10 +37,11 @@ export class ElfsquadForgeViewer extends HTMLElement {
     connectedCallback() {
         this.attachShadow({ mode: 'open' });
 
-        new MutationObserver((mutations) => {
+        this._attributeObserver = new MutationObserver((mutations) => {
             if (!mutations.some(m => m.type == 'attributes')) return;
             this.initializeSettings();
-        }).observe(this, { attributes: true});
+        });
+        this._attributeObserver.observe(this, { attributes: true});
 
         const styleElement = document.createElement('style');
         styleElement.innerHTML = styles;
@@ -69,19 +74,45 @@ export class ElfsquadForgeViewer extends HTMLElement {
         onLoadStart: ((event: Layout3d) => void) | null = null,
         onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
         ): Promise<void> {
-        if (!this._viewerContainerDiv) return;
+        if (!this._viewerContainerDiv || this._disposed) return;
 
-        this._forgeContext = new ForgeContext();
-        await this._forgeContext.initialize(this._viewerContainerDiv, onProgess, onLoadStart, onLoadEnd);
+        const forgeContext = new ForgeContext();
+        this._forgeContext = forgeContext;
+        await forgeContext.initialize(this._viewerContainerDiv, onProgess, onLoadStart, onLoadEnd);
+        if (this._disposed) return;
 
         
-        this._forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
+        forgeContext.nameLabelsManager.onConfigurationSelected = (configurationId) => {
             this._configurationOverview?.selectConfiguration(configurationId);
             this.emitConfigurationSelected(configurationId);
         };
 
         this.initialized = true;
         await this.update(layout3d);
+    }
+
+    /**
+     * Tear the viewer down: stop rendering, finish the Autodesk viewer, remove the viewer's event
+     * listeners and disconnect the element's observers. Call it before you drop the element;
+     * removing the element from the document does not do this.
+     *
+     * Safe to call more than once and at any time. If `initialize()` is still running, it resolves
+     * without starting a viewer (or, once the viewer exists, without loading further models). A
+     * disposed element cannot be initialized again: create a new one.
+     */
+    public dispose(): void {
+        if (this._disposed) return;
+        this._disposed = true;
+        this.initialized = false;
+
+        this._attributeObserver?.disconnect();
+        this._attributeObserver = null;
+        this._resizeObserver?.disconnect();
+        this._resizeObserver = null;
+
+        const forgeContext = this._forgeContext;
+        this._forgeContext = null;
+        forgeContext?.dispose();
     }
 
     /**
@@ -99,6 +130,7 @@ export class ElfsquadForgeViewer extends HTMLElement {
      * Apply layout settings to the viewer.
      */
     public async update(layout3d: Layout3d[]): Promise<void> {
+        if (this._disposed) return;
         if (!this.initialized) {
             console.error("Viewer is not yet initialized");
             return;
@@ -223,9 +255,9 @@ export class ElfsquadForgeViewer extends HTMLElement {
 
     private initializeResizeObserver() {
         if (!window.ResizeObserver) return;
-        const resizeObserver = new ResizeObserver(() => {
+        this._resizeObserver = new ResizeObserver(() => {
             this._forgeContext?.viewer?.resize();
         });
-        resizeObserver.observe(this._viewerContainerDiv);
+        this._resizeObserver.observe(this._viewerContainerDiv);
     }
 }

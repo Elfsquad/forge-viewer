@@ -27,7 +27,19 @@ export class ForgeContext {
     private dbIdsByName: { [modelId: number]: { [name: string]: number[] } } = {};
     private onLoadStart: ((event: Layout3d) => void) | null;
 
+    private _disposed = false;
+    private _viewerStarted = false;
+    private _renderLoopStarted = false;
+    private _tokenRequest: AbortController | null = null;
+    private _frameRequest: number | null = null;
+    private _viewerListeners: [string, (event: any) => void][] = [];
+    private _settleOnDispose = new Set<() => void>();
+
     constructor() { }
+
+    public get disposed(): boolean {
+        return this._disposed;
+    }
 
     public async initialize(
         element: HTMLElement,
@@ -35,6 +47,7 @@ export class ForgeContext {
         onLoadStart: ((event: Layout3d) => void) | null = null,
         onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null
     ): Promise<void> {
+        if (this._disposed) return;
         if (typeof Autodesk == 'undefined') {
             throw Error(`Autodesk is not defined. Ensure you have loaded the required Autodesk Forge Viewer script from https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js`);
         }
@@ -43,11 +56,75 @@ export class ForgeContext {
 
         this._element = element;
         await this.initializeViewerToken();
-        await this.initializeViewer(this._element, onProgess, onLoadEnd);
+        if (this._disposed) return;
+        await this.untilDisposed(this.initializeViewer(this._element, onProgess, onLoadEnd));
+        if (this._disposed) return;
         this.intializeNameLabelsManager();
         this.initializeLabelManager();
         this.initializeFootprintManager();
         this.onLoadStart = onLoadStart;
+    }
+
+    /**
+     * Stops the render loop, removes this context's viewer listeners and finishes the Autodesk
+     * viewer. Idempotent. An initialize() still waiting for its token or for the Autodesk
+     * initializer returns without creating a viewer, and pending layout work settles.
+     */
+    public dispose(): void {
+        if (this._disposed) return;
+        this._disposed = true;
+
+        this._tokenRequest?.abort();
+        if (this._frameRequest !== null) {
+            cancelAnimationFrame(this._frameRequest);
+            this._frameRequest = null;
+        }
+
+        try {
+            if (this.viewer) {
+                for (const [type, listener] of this._viewerListeners) {
+                    this.viewer.removeEventListener(type, listener);
+                }
+                // Per viewer, unlike Autodesk.Viewing.shutdown(), so a viewer created afterwards
+                // works. finish() throws on a viewer whose initialize() did not complete, and
+                // until its render loop has started the timeout queued in initializeViewer()
+                // finishes it instead.
+                if (this._viewerStarted && this._renderLoopStarted) this.viewer.finish();
+            }
+        } finally {
+            this._viewerListeners = [];
+            for (const settle of this._settleOnDispose) settle();
+            this._settleOnDispose.clear();
+        }
+    }
+
+    public addViewerListener(type: string, listener: (event: any) => void): void {
+        this._viewerListeners.push([type, listener]);
+        this.viewer.addEventListener(type, listener);
+    }
+
+    /**
+     * Settles with `promise`, or with undefined once the context is disposed: a finished viewer
+     * never fires the events that model loads and camera restores wait for.
+     */
+    private untilDisposed<T>(promise: Promise<T>): Promise<T | undefined> {
+        return new Promise<T | undefined>((resolve, reject) => {
+            if (this._disposed) {
+                resolve(undefined);
+                return;
+            }
+            const settle = () => resolve(undefined);
+            this._settleOnDispose.add(settle);
+            promise.then(
+                (value) => {
+                    this._settleOnDispose.delete(settle);
+                    resolve(value);
+                },
+                (error) => {
+                    this._settleOnDispose.delete(settle);
+                    reject(error);
+                });
+        });
     }
 
     public focus(): void {
@@ -68,8 +145,14 @@ export class ForgeContext {
     }
 
     private async initializeViewerToken(): Promise<void> {
-        const response = await fetch(`https://api.elfsquad.io/api/2.0/configurations/autodesktoken`);
-        this._token = await response.text();
+        this._tokenRequest = new AbortController();
+        try {
+            const response = await fetch(`https://api.elfsquad.io/api/2.0/configurations/autodesktoken`, { signal: this._tokenRequest.signal });
+            this._token = await response.text();
+        } catch (error) {
+            if (this._disposed) return;
+            throw error;
+        }
     }
 
     private initializeViewer(element: HTMLElement, onProgess: ((event: ViewerProgressEvent) => void) | null, onLoadEnd: ((event: GeometryLoadedEvent) => void) | null = null): Promise<void> {
@@ -79,6 +162,10 @@ export class ForgeContext {
                 env: 'AutodeskProduction',
                 accessToken: this._token as string
             }, () => {
+                if (this._disposed) {
+                    resolve();
+                    return;
+                }
                 // The initializer has run, so the viewer's internals are there to patch: the
                 // per-load geometry dump is replaced by the on-demand
                 // `elfsquadForgeViewer.printGpuMetrics()` command.
@@ -88,19 +175,28 @@ export class ForgeContext {
                 // which happens inside these two calls and nowhere else.
                 withRendererLogsSuppressed(() => {
                     this.viewer = new Autodesk.Viewing.Viewer3D(element, {});
-                    if (onProgess) this.viewer.addEventListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
-                    this.viewer.initialize();
+                    if (onProgess) this.addViewerListener(Autodesk.Viewing.PROGRESS_UPDATE_EVENT, onProgess);
+                    // 0 means initialized; anything else is an error code (no WebGL, for one).
+                    this._viewerStarted = this.viewer.initialize() === 0;
                 });
+                // initialize() starts Autodesk's render loop from a 1 ms timeout, and a viewer
+                // finished before that fires is left ticking on a destroyed renderer for good.
+                // A timeout queued after theirs runs after it, so it marks the loop as started
+                // and finishes a viewer disposed in that window.
+                setTimeout(() => {
+                    this._renderLoopStarted = true;
+                    if (this._disposed && this._viewerStarted) this.viewer.finish();
+                }, 1);
                 this.viewer.setGhosting(false);
                 this.viewer.setProgressiveRendering(false);
                 this.viewer.setBackgroundColor(250, 250, 250, 250, 250, 250);
                 this.viewer.disableHighlight(true);
                 this.viewer.impl.createOverlayScene(this._overlayScene);
-                this.viewer.addEventListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
-                this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
+                this.addViewerListener(Autodesk.Viewing.OBJECT_TREE_CREATED_EVENT, (e) => this.onObjectTreeCreated(e));
+                this.addViewerListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => this.onGeometryLoaded(e));
                 if (onLoadEnd)
-                    this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => onLoadEnd(e));
-                this.viewer.addEventListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());
+                    this.addViewerListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, (e) => onLoadEnd(e));
+                this.addViewerListener(Autodesk.Viewing.AGGREGATE_SELECTION_CHANGED_EVENT, _ => this.viewer.clearSelection());
                 this.update();
                 resolve();
             });
@@ -110,7 +206,8 @@ export class ForgeContext {
     }
 
     private update() {
-        requestAnimationFrame(() => this.update());
+        if (this._disposed) return;
+        this._frameRequest = requestAnimationFrame(() => this.update());
         let invalidate = false;
         for (let spinner of Object.values(this._loadModelSpinners)) {
             spinner.rotateZ(0.07);
@@ -158,6 +255,10 @@ export class ForgeContext {
 
     public applyLayout(layout3d: Layout3d[]): Promise<void> {
         let promise = new Promise<void>(async (resolve, reject) => {
+            if (this._disposed) {
+                resolve();
+                return;
+            }
             if (this.viewer == null) {
                 reject(Error("Viewer is not yet initialized"));
                 return;
@@ -176,13 +277,20 @@ export class ForgeContext {
                 this.linked3dSettings[layout.configurationId] = layout;
 
                 if (!(layout.configurationId in this.loaded3dModels)) {
-                    const model = await this.loadModel(layout);
-                    await this.toggleInViewer(model, layout);
+                    const model = await this.untilDisposed(this.loadModel(layout));
+                    if (this._disposed) break;
+                    await this.untilDisposed(this.toggleInViewer(model!, layout));
                 } else {
                     let loadedModel = this.loaded3dModels[layout.configurationId];
                     this.moveModel(loadedModel, layout);
-                    await this.toggleInViewer(loadedModel, layout);
+                    await this.untilDisposed(this.toggleInViewer(loadedModel, layout));
                 }
+                if (this._disposed) break;
+            }
+
+            if (this._disposed) {
+                resolve();
+                return;
             }
 
             (<any>this.viewer).impl.invalidate(true);
@@ -196,7 +304,7 @@ export class ForgeContext {
     }
 
     public async applyCamera(camera: CameraPosition, configurationId: string | null = null): Promise<void> {
-        if (!camera.state) { return; }
+        if (!camera.state || this._disposed) { return; }
 
         let viewerState = JSON.parse(camera.state) as ViewerState;
 
@@ -213,7 +321,7 @@ export class ForgeContext {
             }
         }
         viewerState.renderOptions.appearance.progressiveDisplay = false;
-        await this.restoreState(viewerState);
+        await this.untilDisposed(this.restoreState(viewerState));
         this.setPivotPoint();
     }
 
@@ -243,7 +351,9 @@ export class ForgeContext {
 
             // Kick the render loop; without this the FINAL_FRAME_RENDERED_CHANGED_EVENT
             // never fires when the viewer is idle (demand-rendering mode).
-            requestAnimationFrame(() => this.viewer.impl.invalidate(true));
+            requestAnimationFrame(() => {
+                if (!this._disposed) this.viewer.impl.invalidate(true);
+            });
         });
 
 
@@ -266,7 +376,7 @@ export class ForgeContext {
             Autodesk.Viewing.Document.load(
                 `urn:${layout3d.urn}`,
                 async (viewerDocument) => {
-                    if (this.viewer == null) return;
+                    if (this.viewer == null || this._disposed) return;
 
                     this._loadModelPromises[layout3d.configurationId] = { resolve, reject };
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
@@ -277,12 +387,14 @@ export class ForgeContext {
                         loadAsHidden: true
                     },
                         (model) => {
+                            if (this._disposed) return;
                             this.loaded3dModels[layout3d.configurationId] = model;
                             this.moveModel(model, layout3d);
                         });
 
                 },
                 (err) => {
+                    if (this._disposed) return;
                     console.error('document load error', err)
                     reject(err);
                 });
@@ -382,7 +494,7 @@ export class ForgeContext {
     private originalMaterials: { [fragId: string]: any } = {};
     private originalColors: { [fragId: string]: any } = {};
     private async toggleInViewer(model: Autodesk.Viewing.Model, linked3dModel: Layout3d) {
-        if (!this.viewer) { return; }
+        if (!this.viewer || this._disposed) { return; }
 
         const state = this.viewer.getState();
         for (const objSet of state.objectSet) {
@@ -391,7 +503,8 @@ export class ForgeContext {
 
         // Preserve camera to avoid overriding active camera transitions
         // with intermediate states captured during animation
-        await this.restoreState(state, { preserveCamera: true });
+        await this.untilDisposed(this.restoreState(state, { preserveCamera: true }));
+        if (this._disposed) return;
 
         let mapped3dItems = linked3dModel.mapped3dItems;
 
@@ -491,13 +604,14 @@ export class ForgeContext {
             }
         }
 
+        if (this._disposed) return;
         this.viewer.impl.invalidate(true);
         this.viewer.impl.sceneUpdated(true);
         this.setPivotPoint();        
     }
 
     private async applyMaterial(itemId: number, material: Material, fragmentList: any): Promise<any> {
-        if (!this.viewer) return;
+        if (!this.viewer || this._disposed) return;
 
         const frags = this.dbsToFrags([itemId]);
         for (const fragId of frags) {
@@ -510,6 +624,7 @@ export class ForgeContext {
             const originalMaterial = this.originalMaterials[fragId];
             let clonedMaterial = this.cloneMaterial(originalMaterial);
             clonedMaterial = await this.applyMaterialChanges(clonedMaterial, material, fragId);
+            if (this._disposed) return;
             this.applyMaterialToFragId(clonedMaterial, fragId, fragmentList);
         }
     }
@@ -615,7 +730,7 @@ export class ForgeContext {
                 texture.repeat.set(normalizedRepeatX, normalizedRepeatY); // Adjust scale.
                 threeMaterial.needsUpdate = texture.needsUpdate = true;
 
-                if (!this.viewer) return;
+                if (!this.viewer || this._disposed) return;
                 this.viewer.impl.invalidate(true, true, true); // Re-render.
             }
         }
@@ -678,7 +793,7 @@ export class ForgeContext {
     }
 
     private setPivotPoint() {
-        if (!this.viewer) return;
+        if (!this.viewer || this._disposed) return;
 
         let bbox = this.getModelBoundingBox();
         const min = bbox[0];
