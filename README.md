@@ -45,3 +45,20 @@ configuratorContext.newConfiguration('Model name').then(async (configuration) =>
 
 });
 ```
+
+## Teardown
+
+Removing the element from the page does not stop the Autodesk viewer inside it: it keeps
+rendering, and an `initialize()` that is still running goes on to start one. Call `dispose()`
+before you drop the element:
+
+```javascript
+forgeViewer.dispose();
+forgeViewer.remove();
+```
+
+`dispose()` stops the render loop, finishes the Autodesk viewer, removes the viewer's event
+listeners and disconnects the element's observers. It is safe to call more than once and at any
+time. If `initialize()` has not finished yet, it resolves without starting a viewer, or without
+loading further models once the viewer exists. A disposed element cannot be initialized again:
+create a new one.
