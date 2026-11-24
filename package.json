@@ -1,6 +1,6 @@
 {
   "name": "@elfsquad/forge-viewer",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,7 +8,7 @@
     "/dist"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test src/forge/load-options.test.ts",
     "build": "webpack",
     "watch": "webpack --watch",
     "docs": "typedoc src/elfsquad-forge-viewer.ts --excludeInternal --excludePrivate --excludeExternals"
