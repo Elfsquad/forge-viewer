@@ -62,3 +62,14 @@ listeners and disconnects the element's observers. It is safe to call more than 
 time. If `initialize()` has not finished yet, it resolves without starting a viewer, or without
 loading further models once the viewer exists. A disposed element cannot be initialized again:
 create a new one.
+
+## Drawing a model at its CAD origin
+
+By default Autodesk centres every model on the middle of its bounding box. A layout entry that
+carries `useCadOrigin: true` is loaded with a zero `globalOffset` instead, so the model is drawn
+at the origin of its CAD file. The flag is read per entry, so the root model and each linked model
+choose independently. An absent flag or `false` keeps the default.
+
+```javascript
+await forgeViewer.initialize(layout3d.map(l => ({ ...l, useCadOrigin: l.useCadOrigin === true })));
+```

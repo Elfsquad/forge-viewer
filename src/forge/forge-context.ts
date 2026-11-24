@@ -3,6 +3,7 @@ import { FootprintManager } from "./footprintManager";
 import { Label3DManager as LabelManager } from "./labelmanager";
 import { ViewerProgressEvent } from "./models/progressEvent";
 import { NameLabelsManager } from "./nameLabelsManager";
+import { getModelLoadOptions } from "./load-options";
 import { ViewerState } from "./viewerState";
 import { GeometryLoadedEvent } from "./models/geometryLoadedEvent";
 import {
@@ -382,10 +383,7 @@ export class ForgeContext {
                     this._layouts[viewerDocument.docRoot.id] = layout3d;
 
                     const defaultModel = viewerDocument.getRoot().getDefaultGeometry();
-                    this.viewer.loadModel(viewerDocument.getViewablePath(defaultModel), {
-                        applyScaling: 'mm',
-                        loadAsHidden: true
-                    },
+                    this.viewer.loadModel(viewerDocument.getViewablePath(defaultModel), getModelLoadOptions(layout3d),
                         (model) => {
                             if (this._disposed) return;
                             this.loaded3dModels[layout3d.configurationId] = model;
